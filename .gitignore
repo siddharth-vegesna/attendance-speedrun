@@ -1,0 +1,18 @@
+# Raw campus photos stay local
+*.jpeg
+*.jpg
+*.JPG
+*.HEIC
+*.heic
+*.mov
+*.MOV
+*.mp4
+
+# Godot cache / Blender backups / zips
+game/.godot/
+*.blend1
+*.zip
+.DS_Store
+
+# Local Claude settings
+.claude/
