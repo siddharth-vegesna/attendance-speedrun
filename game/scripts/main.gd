@@ -158,6 +158,8 @@ func _build_lights() -> void:
 	_omni(B(-8, 24, 4.5), 12, 0.8)
 	_omni(B(8, 24, 4.5), 12, 0.8)
 	_omni(B(0, 24, 10), 16, 1.0)
+	_omni(B(-7, 34.5, 3.8), 9, 1.0)     # exit area behind the stairs
+	_omni(B(-4, 22, 4.5), 7, 0.6)       # spiral staircase
 	for k in 8:
 		var x0 := LOBBY_X + k * ROOM_W
 		_omni(B(x0 + 4, 27, 9.3), 8, 0.8)
@@ -1193,4 +1195,37 @@ func _debug_shots() -> void:
 	_show_register()
 	await get_tree().create_timer(0.3).timeout
 	await _snap("09_register")
+	register_panel.visible = false
+	result_panel.visible = false
+	# floor-plan lobby: view from the entrance, the exit area, then walk up the spiral stairs
+	state = State.RUN
+	time_left = 999
+	player.frozen = false
+	player.reset_to(B(0, 2, FLOOR + 0.1), 0.25)
+	await get_tree().create_timer(0.5).timeout
+	await _snap("10_lobby_plan")
+	player.reset_to(B(-7, 30, FLOOR + 0.1), 0)
+	await get_tree().create_timer(0.5).timeout
+	await _snap("11_exit_area")
+	var a0 := deg_to_rad(-400.0)
+	player.reset_to(B(-4 + 2 * cos(a0), 22 + 2 * sin(a0), FLOOR + 0.2), 0)
+	var w := InputEventKey.new()
+	w.keycode = KEY_W
+	w.pressed = true
+	Input.parse_input_event(w)
+	var tmax := 0.0
+	for f in 300:
+		var bp := Vector2(player.global_position.x + 4, -player.global_position.z - 22)
+		var r := bp.length()
+		var t := bp.angle()
+		var dir := Vector2(-sin(t), cos(t)) - bp.normalized() * (r - 2.0) * 0.6
+		if f > 0 and t > deg_to_rad(-80) and t < deg_to_rad(-30) and player.global_position.y > UP - 0.3:
+			dir = Vector2(0, -1)
+		player.rotation.y = atan2(-dir.x, dir.y)
+		tmax = max(tmax, player.global_position.y)
+		await get_tree().physics_frame
+	w.pressed = false
+	Input.parse_input_event(w)
+	print("TEST spiral: final y=", player.global_position.y, " max y=", tmax, " (upper floor y=", UP, ")")
+	await _snap("12_after_stairs")
 	get_tree().quit()

@@ -158,6 +158,7 @@ GOLD = mat("Chandelier", "#FFD69A", emit=6.0)
 LEAF = mat("Leaf", "#3F7A35")
 TRUNK = mat("Trunk", "#7A5B3C")
 SOFA_RED = mat("SofaRed", "#B21E2C")
+BLACK_M = mat("TextBlack", "#111111")
 BOARD = mat("Whiteboard", "#FBFBFB", rough=0.15)
 DESK = mat("Desk", "#C9A27A")
 CHAIR = mat("Chair", "#2F5DA8")
@@ -400,7 +401,9 @@ lw.box(LOBBY_X, LOBBY_X + 0.4, 0, CORR_Y0, FLOOR, LOBBY_TOP)                    
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y1, LOBBY_Y, FLOOR, LOBBY_TOP)
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y0, CORR_Y1, FLOOR, UP)
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y0, CORR_Y1, UP_CEIL, LOBBY_TOP)
-lw.box(-LOBBY_X, LOBBY_X, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)                  # back
+lw.box(-LOBBY_X, -12, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)                     # back, around the exit opening
+lw.box(-2, LOBBY_X, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)
+lw.box(-12, -2, LOBBY_Y, LOBBY_Y + 0.4, 4.4, LOBBY_TOP)
 lw.box(-LOBBY_X, -7, 0, 0.3, FLOOR, LOBBY_TOP)                                     # inner front
 lw.box(7, LOBBY_X, 0, 0.3, FLOOR, LOBBY_TOP)
 lw.box(-7, 7, 0, 0.3, 9, LOBBY_TOP)
@@ -421,10 +424,12 @@ text("BITS Pilani, Dubai Campus", (0, -0.14, 6.9), FACE_NEG_Y, 0.42, WHITE, F_SE
 
 # mezzanine slab (hole over the grand staircase x -2.5..2.5, y 18..28)
 mz = Mesh("Mezzanine", WOOD, col=True, tile=4.0)
-mz.box(-LOBBY_X, LOBBY_X, MEZZ_Y, 18, UP - 0.2, UP)
-mz.box(-LOBBY_X, LOBBY_X, 28, LOBBY_Y, UP - 0.2, UP)
-mz.box(-LOBBY_X, -2.5, 18, 28, UP - 0.2, UP)
-mz.box(2.5, LOBBY_X, 18, 28, UP - 0.2, UP)
+SPX, SPY = -4.0, 22.0          # spiral staircase centre (floor plan: left of centre, behind circle 2)
+mz.box(-LOBBY_X, LOBBY_X, MEZZ_Y, 18.6, UP - 0.2, UP)
+mz.box(-LOBBY_X, LOBBY_X, 25.4, LOBBY_Y, UP - 0.2, UP)
+mz.box(-LOBBY_X, SPX - 3.4, 18.6, 25.4, UP - 0.2, UP)
+mz.box(SPX + 3.4, LOBBY_X, 18.6, 25.4, UP - 0.2, UP)
+mz.box(SPX - 0.9, SPX + 0.9, 18.6, SPY - 1.0, UP - 0.2, UP)     # top landing
 mz.done()
 Mesh("MezzUnderside", WHITE).box(-LOBBY_X, LOBBY_X, MEZZ_Y, LOBBY_Y, UP - 0.25, UP - 0.2).done()
 Mesh("Fascia", WHITE, col=True).box(-LOBBY_X, LOBBY_X, MEZZ_Y - 0.4, MEZZ_Y, 4.5, UP).done()
@@ -453,19 +458,44 @@ def railing_y(y0, y1, x):
         y += 0.3
     rail_c.box(x - 0.1, x + 0.1, y0, y1, UP, UP + 1.2)
 railing_x(-LOBBY_X, LOBBY_X, MEZZ_Y + 0.1)
-railing_x(-2.5, 2.5, 18.1)
-railing_y(18, 28, -2.6)
-railing_y(18, 28, 2.6)
+railing_x(SPX - 3.4, SPX - 0.9, 18.7)
+railing_x(SPX + 0.9, SPX + 3.4, 18.7)
+railing_x(SPX - 3.4, SPX + 3.4, 25.3)
+railing_y(18.6, 25.4, SPX - 3.3)
+railing_y(18.6, 25.4, SPX + 3.3)
 rail_v.done(); rail_c.done()
 
-# grand staircase
-st = Mesh("GrandStairs", STONE, tile=1.5)
-for k in range(20):
-    st.box(-2.5, 2.5, 18 + 0.5 * k, 28, FLOOR, FLOOR + 0.25 * (k + 1))
-st.done()
-Mesh("StairRamp", INVIS, colonly=True).hexa(
-    lambda xi, yi, zi: ((-2.5, 2.5)[xi], (17.5, 28)[yi], (FLOOR - 0.1, (FLOOR, UP)[yi])[zi])).done()
-Mesh("StairSides", INVIS, colonly=True).box(-2.7, -2.5, 17.5, 28, FLOOR, UP).box(2.5, 2.7, 17.5, 28, FLOOR, UP).done()
+# spiral staircase (STAIR-3): 300 degrees counter-clockwise, ends on the landing facing the entrance
+st = Mesh("SpiralStairs", STONE, tile=1.5)
+sr = Mesh("SpiralRamp", INVIS, colonly=True)
+side = Mesh("SpiralRail", WHITE, col=True)
+A1 = math.radians(-90)
+A0 = A1 - math.radians(300)
+N = 24
+for k in range(N):
+    t0 = A0 + (A1 - A0) * k / N
+    t1 = A0 + (A1 - A0) * (k + 1) / N
+    h0 = FLOOR + (UP - FLOOR) * k / N
+    h1 = FLOOR + (UP - FLOOR) * (k + 1) / N
+    def step(xi, yi, zi, t0=t0, t1=t1, h1=h1):
+        t = (t0, t1)[xi]
+        r = (3.0, 0.9)[yi]
+        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (h1 - 0.25, h1)[zi])
+    st.hexa(step)
+    def ramp(xi, yi, zi, t0=t0, t1=t1, h0=h0, h1=h1):
+        t = (t0, t1)[xi]
+        r = (3.0, 0.9)[yi]
+        top = (h0, h1)[xi]
+        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (top - 0.35, top)[zi])
+    sr.hexa(ramp)
+    def wall(xi, yi, zi, t0=t0, t1=t1, h0=h0, h1=h1):
+        t = (t0, t1)[xi]
+        r = (3.12, 3.0)[yi]
+        top = (h0, h1)[xi]
+        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (top - 0.3, top + 1.0)[zi])
+    side.hexa(wall)
+st.done(); sr.done(); side.done()
+Mesh("SpiralCore", WHITE, col=True).cyl(SPX, SPY, FLOOR, UP, 0.9, 24).done()
 
 # hanging banners: innovate / achieve / lead
 for (bx, m, word) in ((-2.3, YELLOW, "innovate"), (0, LBLUE, "achieve"), (2.3, RED, "lead")):
@@ -527,14 +557,47 @@ for n, px in enumerate((-10, -5, 5, 10)):
         Mesh("Poster", POSTER[(n + k) % 3]).box(px - 0.37, px + 0.37, MEZZ_Y - 0.93, MEZZ_Y - 0.89,
                                                 FLOOR + 0.4 + k * 1.0, FLOOR + 1.3 + k * 1.0).done()
 
-# red & white round seating (left) and teal seating (right back)
+# red & white round sofas: circle 1 (front left) and circle 2 (centre, in front of the stairs)
 seat_w, seat_r = Mesh("SofaBase", WHITE, col=True), Mesh("SofaTop", SOFA_RED, col=True)
-seat_w.arc(-9, 8, FLOOR, FLOOR + 0.45, 1.6, 2.4, math.radians(-30), math.radians(250))
-seat_r.arc(-9, 8, FLOOR + 0.45, FLOOR + 0.6, 1.6, 2.4, math.radians(-30), math.radians(250))
-seat_r.arc(-9, 8, FLOOR + 0.45, FLOOR + 1.1, 2.4, 2.6, math.radians(-30), math.radians(250))
+for (cx, cy) in ((-8.5, 7.5), (2.5, 13.0)):
+    seat_w.arc(cx, cy, FLOOR, FLOOR + 0.45, 0.9, 2.0, 0, 2 * math.pi, seg=32)
+    seat_r.arc(cx, cy, FLOOR + 0.45, FLOOR + 0.6, 0.9, 2.0, 0, 2 * math.pi, seg=32)
+    seat_r.arc(cx, cy, FLOOR + 0.45, FLOOR + 1.15, 0.6, 0.9, 0, 2 * math.pi, seg=32)   # centre backrest
 seat_w.done(); seat_r.done()
 Mesh("TealSofa", TEAL, col=True).arc(9, 24, FLOOR, FLOOR + 0.55, 1.5, 2.3,
                                     math.radians(90), math.radians(300)).done()
+
+# ================================================================ EXIT AREA behind the stairs
+# curved glass room with doors, a vending machine and two random tables
+EX, EY, ER = -7.0, 32.4, 5.0
+Mesh("ExitFloor", TILE, col=True, tile=2.0).box(EX - ER - 0.3, EX + ER + 0.3, LOBBY_Y, EY + ER + 0.3, FLOOR - 0.2, FLOOR).done()
+Mesh("ExitCeiling", WHITE).box(EX - ER - 0.3, EX + ER + 0.3, LOBBY_Y, EY + ER + 0.3, 4.4, 4.6).done()
+Mesh("ExitGlass", GLASS, col=True).arc(EX, EY, FLOOR, 4.4, ER, ER + 0.1, 0, math.pi, seg=24).done()
+fr = Mesh("ExitFrames", WHITE)
+for i in range(13):
+    a = math.pi * i / 12
+    fr.box(EX + ER * math.cos(a) - 0.06, EX + ER * math.cos(a) + 0.06,
+           EY + ER * math.sin(a) - 0.06, EY + ER * math.sin(a) + 0.06, FLOOR, 4.4)
+fr.arc(EX, EY, 4.3, 4.4, ER - 0.05, ER + 0.15, 0, math.pi, seg=24)
+fr.arc(EX, EY, 3.3, 3.38, ER - 0.02, ER + 0.12, math.radians(70), math.radians(110), seg=6)
+fr.done()
+# glass doors in the middle of the curve, with a green EXIT sign
+Mesh("ExitDoorHandles", METAL).box(EX - 0.12, EX - 0.06, EY + ER - 0.12, EY + ER - 0.08, 2.0, 2.8).box(
+    EX + 0.06, EX + 0.12, EY + ER - 0.12, EY + ER - 0.08, 2.0, 2.8).done()
+text("EXIT", (EX, EY + ER - 0.2, 3.85), FACE_NEG_Y, 0.38, mat("ExitSignGreen", "#20B05A", emit=3.0), F_BLACK, ext=0.01)
+# vending machine (against the left side of the curve)
+Mesh("Vending", mat("VendingRed", "#B3202A"), col=True).box(EX - 4.2, EX - 3.2, EY + 0.6, EY + 1.5, FLOOR, FLOOR + 2.0).done()
+Mesh("VendingFront", mat("VendingGlow", "#DDEEFF", emit=1.2)).box(
+    EX - 3.2, EX - 3.16, EY + 0.7, EY + 1.25, FLOOR + 0.7, FLOOR + 1.85).done()
+text("OUT OF\nORDER", (EX - 3.12, EY + 0.98, FLOOR + 0.45), FACE_POS_X, 0.12, BLACK_M, F_BLACK, ext=0.005)
+# two random tables with stools
+tab_t, tab_l, stools = Mesh("ExitTables", WHITE, col=True), Mesh("ExitTableLegs", METAL), Mesh("ExitStools", CHAIR, col=True)
+for (tx, ty) in ((EX + 1.6, EY + 1.6), (EX + 3.0, EY - 0.4)):
+    tab_t.cyl(tx, ty, FLOOR + 0.72, FLOOR + 0.76, 0.5, 20)
+    tab_l.cyl(tx, ty, FLOOR, FLOOR + 0.72, 0.05, 8)
+    for a in (0.3, 2.4, 4.4):
+        stools.cyl(tx + 0.85 * math.cos(a), ty + 0.85 * math.sin(a), FLOOR, FLOOR + 0.45, 0.2, 12)
+tab_t.done(); tab_l.done(); stools.done()
 
 # reception desk (right) with LED strip
 Mesh("Reception", WHITE, col=True).box(9.5, 13.6, 2.5, 7.5, FLOOR, FLOOR + 1.15).done()
@@ -549,8 +612,8 @@ for (x, y) in ((-12.8, 14), (12.8, 14), (-6, 14.4), (6, 14.4), (-12.8, 1.2), (12
 pots.done(); greens.done()
 
 # wall slogan under the mezzanine
-text("ENGINEER YOUR MIND", (-7, LOBBY_Y - 0.05, 3.6), FACE_NEG_Y, 0.55, NAVY, F_BLACK, ext=0.01)
-text("FOR A WORLD OF POSSIBILITIES", (-7, LOBBY_Y - 0.05, 2.9), FACE_NEG_Y, 0.42, NAVY, F_BLACK, ext=0.01)
+text("ENGINEER YOUR MIND", (-7, LOBBY_Y - 0.05, 5.3), FACE_NEG_Y, 0.42, NAVY, F_BLACK, ext=0.01)
+text("FOR A WORLD OF POSSIBILITIES", (-7, LOBBY_Y - 0.05, 4.75), FACE_NEG_Y, 0.3, NAVY, F_BLACK, ext=0.01)
 text("ATTENDANCE IS MANDATORY", (7, LOBBY_Y - 0.05, 3.3), FACE_NEG_Y, 0.45, mat("SignRed", "#C0202E"), F_BLACK, ext=0.01)
 
 # ceiling downlights
