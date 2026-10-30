@@ -108,6 +108,43 @@ IMG_BRICK = save_img("brick", brick_tex())
 IMG_TILE = save_img("tile", tile_tex((0.80, 0.80, 0.78)))
 IMG_GRANITE = save_img("granite", tile_tex((0.47, 0.42, 0.37)))
 
+def carpet_tex():
+    # the blue mottled carpet tiles from the classroom photos
+    W = H = 256
+    rng = np.random.default_rng(4)
+    n = rng.random((H // 16, W // 16))
+    n = np.kron(n, np.ones((16, 16)))
+    n = 0.6 * n + 0.4 * np.kron(rng.random((H // 4, W // 4)), np.ones((4, 4)))
+    streak = np.repeat(rng.random((H, 1)), W, axis=1) * 0.25
+    t = np.clip(n * 0.8 + streak, 0, 1)[:, :, None]
+    dark, light = np.array([0.10, 0.17, 0.30]), np.array([0.30, 0.45, 0.62])
+    arr = dark * (1 - t) + light * t
+    arr *= (1 + rng.normal(0, 0.05, (H, W, 1)))
+    return arr
+
+def ceiling_tex():
+    W = H = 128
+    arr = np.zeros((H, W, 3), np.float32) + np.array([0.93, 0.93, 0.92])
+    arr[:2] = arr[:, :2] = np.array([0.72, 0.72, 0.72])
+    arr *= (1 + np.random.default_rng(5).normal(0, 0.01, (H, W, 1)))
+    return arr
+
+def wallpaper_tex():
+    # lock-screen wallpaper on the class display: sky through a dark rock arch over sand
+    W, H = 160, 90
+    y = np.linspace(0, 1, H)[:, None, None]
+    x = np.linspace(0, 1, W)[None, :, None]
+    sky = np.array([0.25, 0.55, 0.95]) * (1 - y) + np.array([0.75, 0.85, 0.95]) * y
+    sand = np.array([0.75, 0.45, 0.30])
+    arr = np.where(y > 0.62, sand, sky) * np.ones((H, W, 3))
+    arch = ((x - 0.5) ** 2 / 0.12 + (y - 0.55) ** 2 / 0.2) > 1.0
+    arr = np.where(arch, np.array([0.12, 0.09, 0.07]), arr)
+    return arr[::-1]
+
+IMG_CARPET = save_img("carpet", carpet_tex())
+IMG_CEIL = save_img("ceiling", ceiling_tex())
+IMG_WALLPAPER = save_img("wallpaper", wallpaper_tex())
+
 # ---------------------------------------------------------------- materials
 _mats = {}
 def mat(name, hexc="#ffffff", emit=0.0, alpha=1.0, rough=0.7, metal=0.0, img=None):
@@ -159,6 +196,18 @@ LEAF = mat("Leaf", "#3F7A35")
 TRUNK = mat("Trunk", "#7A5B3C")
 SOFA_RED = mat("SofaRed", "#B21E2C")
 BLACK_M = mat("TextBlack", "#111111")
+CARPET = mat("Carpet", "#ffffff", img=IMG_CARPET, rough=0.95)
+CEIL_TILE = mat("CeilingTile", "#ffffff", img=IMG_CEIL, rough=0.9)
+SCREEN = mat("Screen", "#23528F", emit=0.5, rough=0.2)   # display showing a blue lock screen
+CLASS_WHITE = mat("ClassWall", "#F4F4F2", rough=0.9)
+DADO = mat("CorridorDado", "#D9C4A5")
+SILVER = mat("Silver", "#B8BCC0", metal=0.7, rough=0.3)
+BLACK_PLASTIC = mat("BlackPlastic", "#1B1B1D", rough=0.5)
+DESK_WHITE = mat("DeskWhite", "#EDEDEA", rough=0.3)
+WOOD_LIGHT = mat("TeacherWood", "#C79A5E", rough=0.6)
+DOOR_BROWN = mat("DoorFrame", "#3A160D", rough=0.4)
+SHELL = {"orange": mat("ChairOrange", "#EE7A22", rough=0.5), "red": mat("ChairRed", "#D7322C", rough=0.5),
+         "blue": mat("ChairBlue", "#8FB0DE", rough=0.5)}
 BOARD = mat("Whiteboard", "#FBFBFB", rough=0.15)
 DESK = mat("Desk", "#C9A27A")
 CHAIR = mat("Chair", "#2F5DA8")
@@ -695,11 +744,20 @@ def build_wing(n):
     sk.box(LOBBY_X, WX1, CORR_Y0, CORR_Y0 + 0.03, UP, UP + 0.15)
     sk.done()
 
-    board, frame = Mesh("Boards", BOARD), Mesh("BoardFrames", METAL)
-    desks, legs, chairs = Mesh("Desks", DESK, col=True), Mesh("DeskLegs", METAL), Mesh("Chairs", CHAIR)
-    tdesk = Mesh("TeacherDesks", mat("TeacherDesk", "#8E6A4A"), col=True)
-    panels = Mesh("CeilingPanels", PANEL)
-    proj = Mesh("Projectors", METAL)
+    # Classroom interior, modelled from the classroom photos: blue carpet tiles, white walls, grid ceiling
+    # with square LED panels and a bulkhead on the board side, whiteboard + touch display on a rolling
+    # stand, PC cabinet, biometric attendance box, wooden teacher desk, long white two-seat desks with
+    # shell chairs (orange rooms, and red/blue rooms).
+    board, frame = Mesh("Boards", BOARD), Mesh("BoardFrames", SILVER)
+    carpet, ceil_t, liner = Mesh("Carpet", CARPET, tile=1.2), Mesh("RoomCeiling", CEIL_TILE, tile=0.6), Mesh("ClassLiner", CLASS_WHITE)
+    desks, legs = Mesh("Desks", DESK_WHITE, col=True), Mesh("DeskLegs", SILVER)
+    chair_m = {k: Mesh("Chairs" + k, v) for k, v in SHELL.items()}
+    tdesk, tlegs = Mesh("TeacherDesks", WOOD_LIGHT, col=True), Mesh("TeacherLegs", BLACK_PLASTIC)
+    panels, black = Mesh("CeilingPanels", PANEL), Mesh("ClassBlack", BLACK_PLASTIC, col=True)
+    screen, cab, cab_d = Mesh("Displays", SCREEN), Mesh("PcCabinet", mat("CabinetGrey", "#C9CBCE"), col=True), Mesh("CabinetDrawers", mat("DrawerBlue", "#2846A8"))
+    clock_w, clock_b = Mesh("ClockFace", WHITE), Mesh("ClockRim", BLACK_PLASTIC)
+    bulk, vent = Mesh("Bulkhead", CLASS_WHITE), Mesh("AcVent", mat("VentGrey", "#9A9EA2"))
+    bio = Mesh("BiometricScreen", mat("BioGlow", "#9FD8FF", emit=1.5))
     for k in range(n):
         x0 = LOBBY_X + k * ROOM_W
         c = x0 + ROOM_W / 2
@@ -708,26 +766,79 @@ def build_wing(n):
             Y = (lambda d: CORR_Y1 + d) if north else (lambda d: CORR_Y0 - d)
             far = Y(8.0)
             fw = -1 if north else 1      # direction from far wall back into room
-            frame.box(c - 2.6, c + 2.6, far + fw * 0.02, far + fw * 0.08, UP + 0.95, UP + 2.45)
-            board.box(c - 2.5, c + 2.5, far + fw * 0.08, far + fw * 0.11, UP + 1.0, UP + 2.4)
-            proj.box(c - 0.25, c + 0.25, Y(4.2), Y(4.6), UP_CEIL - 0.35, UP_CEIL - 0.15)
-            tdesk.box(c + 1.4, c + 3.2, Y(6.4), Y(7.1), UP, UP + 0.8)
+            palette = ("orange", "orange") if (k + north) % 2 else ("red", "blue")
+            # floor, ceiling, white wall lining (far wall + both partitions)
+            carpet.box(x0 + 0.1, x0 + ROOM_W - 0.1, Y(0.2), Y(7.98), UP, UP + 0.012)
+            ceil_t.box(x0 + 0.1, x0 + ROOM_W - 0.1, Y(0.2), Y(7.98), UP_CEIL - 0.012, UP_CEIL)
+            liner.box(x0 + 0.1, x0 + ROOM_W - 0.1, far + fw * 0.0, far + fw * 0.012, UP, UP_CEIL)
+            liner.box(x0 + 0.1, x0 + 0.112, Y(0.2), Y(8), UP, UP_CEIL)
+            liner.box(x0 + ROOM_W - 0.112, x0 + ROOM_W - 0.1, Y(0.2), Y(8), UP, UP_CEIL)
+            # bulkhead with a strip light and AC vent along the board wall
+            bulk.box(x0 + 0.1, x0 + ROOM_W - 0.1, Y(7.4), Y(8), UP_CEIL - 0.45, UP_CEIL)
+            panels.box(x0 + 0.6, x0 + ROOM_W - 0.6, Y(7.38), Y(7.42), UP_CEIL - 0.42, UP_CEIL - 0.38)
+            vent.box(c + 1.2, c + 2.4, Y(7.38), Y(7.36), UP_CEIL - 0.36, UP_CEIL - 0.12)
+            for (px, py) in ((-2, 2.2), (2, 2.2), (-2, 5.2), (2, 5.2)):
+                panels.box(c + px - 0.3, c + px + 0.3, Y(py), Y(py + 0.6), UP_CEIL - 0.02, UP_CEIL - 0.01)
+            # whiteboard, display on a rolling stand in front of it, PC cabinet
+            frame.box(c - 2.6, c + 1.4, far + fw * 0.02, far + fw * 0.06, UP + 0.95, UP + 2.35)
+            board.box(c - 2.55, c + 1.35, far + fw * 0.06, far + fw * 0.08, UP + 1.0, UP + 2.3)
+            sy = far + fw * 0.6
+            black.box(c - 1.95, c - 0.05, sy - 0.04, sy + 0.04, UP + 1.0, UP + 2.15)
+            screen.box(c - 1.88, c - 0.12, sy + fw * 0.045, sy + fw * 0.05, UP + 1.06, UP + 2.09)
+            for lx in (-1.5, -0.5):
+                black.box(c + lx - 0.05, c + lx + 0.05, sy - 0.05, sy + 0.05, UP, UP + 1.0)
+                black.box(c + lx - 0.06, c + lx + 0.06, sy - 0.35, sy + 0.35, UP + 0.05, UP + 0.1)
+            cab.box(c + 0.2, c + 0.75, far + fw * 0.1, far + fw * 0.6, UP, UP + 1.15)
+            cab_d.box(c + 0.24, c + 0.71, far + fw * 0.6, far + fw * 0.61, UP + 0.08, UP + 0.5)
+            # biometric attendance box (the one that made attendance too easy)
+            black.box(c + 2.9, c + 3.25, far + fw * 0.02, far + fw * 0.1, UP + 1.25, UP + 1.8)
+            bio.box(c + 2.97, c + 3.18, far + fw * 0.1, far + fw * 0.11, UP + 1.45, UP + 1.72)
+            # wooden teacher desks with black frames + a wooden chair
+            for tx in (1.3, 2.4):
+                tdesk.box(c + tx - 0.55, c + tx + 0.55, Y(6.6), Y(7.15), UP + 0.74, UP + 0.78)
+                for ex in (-0.5, 0.5):
+                    tlegs.box(c + tx + ex - 0.02, c + tx + ex + 0.02, Y(6.65), Y(7.1), UP, UP + 0.74)
+            tdesk.box(c + 3.0, c + 3.4, Y(6.1), Y(6.45), UP + 0.45, UP + 0.49)
+            tdesk.box(c + 3.0, c + 3.4, Y(6.43), Y(6.47), UP + 0.49, UP + 0.95)
+            # clock above the door wall
+            cy0, cy1 = sorted((Y(0.2), Y(0.24)))
+            clock_b.cyl(c, UP + 2.85, cy0, cy1, 0.26, 24, axis="y")
+            cy0, cy1 = sorted((Y(0.24), Y(0.25)))
+            clock_w.cyl(c, UP + 2.85, cy0, cy1, 0.22, 24, axis="y")
+            # long white desks (two seats each) on grey T-legs, shell chairs
             for row in range(4):
-                for col in (-2.6, 0, 2.6):
+                for ci, col in enumerate((-2.6, 0, 2.6)):
                     dy = 1.6 + row * 1.25
                     desks.box(c + col - 0.9, c + col + 0.9, Y(dy), Y(dy + 0.6), UP + 0.72, UP + 0.76)
-                    legs.box(c + col - 0.88, c + col - 0.84, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
-                    legs.box(c + col + 0.84, c + col + 0.88, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
-                    for sx in (-0.45, 0.45):
-                        chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.55), Y(dy - 0.1), UP + 0.42, UP + 0.47)
-                        chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.6), Y(dy - 0.55), UP + 0.47, UP + 0.95)
-                        legs.box(c + col + sx - 0.02, c + col + sx + 0.02, Y(dy - 0.35), Y(dy - 0.31), UP, UP + 0.42)
-            for py in (2.5, 5.5):
-                panels.box(c - 0.9, c + 0.9, Y(py), Y(py + 0.6), UP_CEIL - 0.02, UP_CEIL)
-    for i in range(2 * n):
+                    for ex in (-0.8, 0.8):
+                        legs.box(c + col + ex - 0.025, c + col + ex + 0.025, Y(dy + 0.27), Y(dy + 0.33), UP, UP + 0.72)
+                        legs.box(c + col + ex - 0.03, c + col + ex + 0.03, Y(dy + 0.02), Y(dy + 0.58), UP, UP + 0.04)
+                    for si, sx in enumerate((-0.45, 0.45)):
+                        cm = chair_m[palette[(row + ci + si) % 2]]
+                        cm.box(c + col + sx - 0.23, c + col + sx + 0.23, Y(dy - 0.55), Y(dy - 0.1), UP + 0.42, UP + 0.48)
+                        cm.hexa(lambda xi, yi, zi, X=c + col + sx, dy=dy: (
+                            X + (-0.22, 0.22)[xi], Y(dy - 0.62 + (0, 0.05)[yi] - (0, 0.08)[zi]), UP + (0.5, 0.95)[zi]))
+                        legs.box(c + col + sx - 0.2, c + col + sx - 0.18, Y(dy - 0.55), Y(dy - 0.1), UP, UP + 0.03)
+                        legs.box(c + col + sx + 0.18, c + col + sx + 0.2, Y(dy - 0.55), Y(dy - 0.1), UP, UP + 0.03)
+                        for lx in (-0.19, 0.19):
+                            legs.box(c + col + sx + lx - 0.012, c + col + sx + lx + 0.012, Y(dy - 0.15), Y(dy - 0.12), UP, UP + 0.42)
+    # corridor: beige dado on the lower half of the walls, dark wooden door frames
+    dado, dframe = Mesh("CorridorDado", DADO), Mesh("DoorFrames", DOOR_BROWN)
+    dado.box(LOBBY_X + 0.4, WX1, CORR_Y1 - 0.012, CORR_Y1, UP, UP + 1.2)
+    dado.box(LOBBY_X + 0.4, WX1, CORR_Y0, CORR_Y0 + 0.012, UP, UP + 1.2)
+    for k in range(n):
+        x0 = LOBBY_X + k * ROOM_W
+        for wy in (CORR_Y1, CORR_Y0):
+            o = -0.04 if wy == CORR_Y1 else 0.04
+            y0, y1 = sorted((wy, wy + o))
+            dframe.box(x0 + DOOR_A - 0.12, x0 + DOOR_A, y0, y1, UP, DOOR_TOP + 0.12)
+            dframe.box(x0 + DOOR_B, x0 + DOOR_B + 0.12, y0, y1, UP, DOOR_TOP + 0.12)
+            dframe.box(x0 + DOOR_A - 0.12, x0 + DOOR_B + 0.12, y0, y1, DOOR_TOP, DOOR_TOP + 0.12)
+    for i in range(2 * n):                                                  # corridor ceiling lights
         x = LOBBY_X + 1.5 + i * 4
         panels.box(x, x + 1.2, CORR_Y0 + 1.7, CORR_Y1 - 1.7, UP_CEIL - 0.02, UP_CEIL)
-    for m_ in (board, frame, desks, legs, chairs, tdesk, panels, proj):
+    for m_ in [board, frame, carpet, ceil_t, liner, desks, legs, tdesk, tlegs, panels, black, screen, cab, cab_d,
+               clock_w, clock_b, bulk, vent, bio, dado, dframe] + list(chair_m.values()):
         m_.done()
 
     # corridor end: fake exit sign

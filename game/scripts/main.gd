@@ -13,6 +13,7 @@ const ROOM_W := 8.0
 const CORR_Y0 := 25.0
 const CORR_Y1 := 29.0
 const DOOR_A := 1.0
+const UP_CEIL_Y := 9.8
 const CUTSCENE_ROOM := 0
 const SPAWN := Vector3(0, 0.2, 28)
 # Must match WINGS in blender/build_campus.py: [letter, rooms per side, rotation deg, x, y] (Blender coords)
@@ -250,14 +251,18 @@ func _build_rooms() -> void:
 		wing.rotation.y = deg_to_rad(w[2])
 		add_child(wing)
 		_build_wing(wing, w[0], w[1])
-	# wayfinding: which wing is where
-	var signs := [[B(12.6, 27, UP + 3.0), "A-WING  >>"], [B(-12.6, 27, UP + 3.0), "<<  B-WING"],
-		[B(0, 30.8, UP + 3.0), "C-WING  ^"], [B(0, 15.4, FLOOR + 3.6), "ALL CLASSROOMS UPSTAIRS\nA: right   B: left   C: back"]]
-	for sg in signs:
-		var l := _label3d(sg[1], 64, Color(1, 0.85, 0.3))
-		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		l.position = sg[0]
-		add_child(l)
+	# a big letter over each hallway entrance, facing the mezzanine
+	for m in [[B(13.85, 27, UP_CEIL_Y + 0.75), -PI / 2, "A"], [B(-13.85, 27, UP_CEIL_Y + 0.75), PI / 2, "B"],
+			[B(0, 31.85, UP_CEIL_Y + 0.75), 0.0, "C"]]:
+		var plate := Node3D.new()
+		plate.position = m[0]
+		plate.rotation.y = m[1]
+		plate.add_child(_mesh(_boxm(Vector3(1.6, 1.3, 0.06)), Vector3(0, 0, -0.04), Color(0.12, 0.16, 0.38)))
+		var l := _label3d(m[2], 220, Color(1, 0.85, 0.3))
+		l.outline_size = 0
+		l.position.z = 0.01
+		plate.add_child(l)
+		add_child(plate)
 
 
 func _build_wing(wing: Node3D, letter: String, n: int) -> void:
@@ -276,7 +281,7 @@ func _build_wing(wing: Node3D, letter: String, n: int) -> void:
 			var wall_y := CORR_Y1 + 0.1 if north else CORR_Y0 - 0.1
 			var into := 1.0 if north else -1.0
 			var r := {"x0": x0, "north": north, "number": "%s-%d" % [letter, num], "wall_y": wall_y,
-				"into": into, "wing": wing}
+				"into": into, "wing": wing, "k": k, "n": n}
 			num += 1
 
 			var sign_root := Node3D.new()
@@ -294,7 +299,7 @@ func _build_wing(wing: Node3D, letter: String, n: int) -> void:
 			var door := Door.new()
 			door.position = B(x0 + DOOR_A, wall_y, UP)
 			wing.add_child(door)
-			door.setup(into, Vector3(0, 0, into), Color(0.55, 0.36, 0.22))
+			door.setup(into, Vector3(0, 0, into), Color(0.3, 0.12, 0.07))
 			door.bonked.connect(_on_bonk)
 			r.door = door
 
@@ -515,9 +520,12 @@ func _begin_run() -> void:
 	dialog_panel.visible = false
 	skip_button.visible = false
 	_assign_numbers()
-	var pick := rng.randi_range(0, rooms.size() - 1)
-	while pick == CUTSCENE_ROOM:
-		pick = rng.randi_range(0, rooms.size() - 1)
+	# only the far end of each corridor, so the run actually takes a while
+	var far := []
+	for i in rooms.size():
+		if i != CUTSCENE_ROOM and rooms[i].k >= ceili(rooms[i].n * 0.6):
+			far.append(i)
+	var pick: int = far[rng.randi_range(0, far.size() - 1)]
 	target_number = rooms[pick].number
 	for i in rooms.size():
 		rooms[i].door.reset(i != CUTSCENE_ROOM and rng.randf() < D.BONK_CHANCE)
@@ -765,7 +773,6 @@ func _build_ui() -> void:
 	tbox.add_child(tv)
 	target_label = _lbl("YOUR CLASS: B-201", 34, Color(1, 0.85, 0.3))
 	tv.add_child(target_label)
-	tv.add_child(_lbl("Upstairs.  A-wing: right   B-wing: left   C-wing: back", 16, Color(0.8, 0.85, 1)))
 	hud.add_child(tbox)
 	toast_label = _lbl("", 26, Color(0.85, 1, 0.95))
 	toast_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -1212,6 +1219,15 @@ func _debug_shots() -> void:
 	player.reset_to(B(16, 27, UP + 0.1), -PI / 2)
 	await get_tree().create_timer(0.5).timeout
 	await _snap("06_corridor")
+	player.reset_to(B(rooms[2].x0 + 4.5, rooms[2].wall_y + rooms[2].into * 0.8, UP + 0.1), 0.0 if rooms[2].north else PI)
+	await get_tree().create_timer(0.5).timeout
+	await _snap("06c_classroom")
+	player.reset_to(B(rooms[2].x0 + 6.5, rooms[2].wall_y + rooms[2].into * 7.2, UP + 0.1), PI + 0.5 if rooms[2].north else 0.5)
+	await get_tree().create_timer(0.5).timeout
+	await _snap("06d_classroom_back")
+	player.reset_to(B(0, 18, UP + 0.1), PI * 0.5)
+	await get_tree().create_timer(0.5).timeout
+	await _snap("06e_wing_markers")
 	var test_room = rooms[5]
 	test_room.door.reset(true)
 	test_room.door.enabled = true
