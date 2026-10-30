@@ -15,6 +15,8 @@ const CORR_Y1 := 29.0
 const DOOR_A := 1.0
 const CUTSCENE_ROOM := 0
 const SPAWN := Vector3(0, 0.2, 28)
+# Must match WINGS in blender/build_campus.py: [letter, rooms per side, rotation deg, x, y] (Blender coords)
+const WINGS := [["A", 8, 0.0, 0.0, 0.0], ["B", 8, 180.0, 0.0, 54.0], ["C", 4, 90.0, 27.0, 18.0]]
 
 enum State { TITLE, SIGNIN, CUTSCENE, COUNTDOWN, RUN, QUIZ, RESULT }
 var state := State.TITLE
@@ -159,12 +161,7 @@ func _build_lights() -> void:
 	_omni(B(8, 24, 4.5), 12, 0.8)
 	_omni(B(0, 24, 10), 16, 1.0)
 	_omni(B(-7, 34.5, 3.8), 9, 1.0)     # exit area behind the stairs
-	_omni(B(-4, 22, 4.5), 7, 0.6)       # spiral staircase
-	for k in 8:
-		var x0 := LOBBY_X + k * ROOM_W
-		_omni(B(x0 + 4, 27, 9.3), 8, 0.8)
-		_omni(B(x0 + 4, 33, 9.2), 9, 0.9)
-		_omni(B(x0 + 4, 21, 9.2), 9, 0.9)
+	_omni(B(0, 22, 8.0), 10, 0.8)       # grand staircase
 
 
 func _mat(c: Color, emit := 0.0) -> StandardMaterial3D:
@@ -247,13 +244,40 @@ func _attach_collider(body_parent: Node3D) -> void:
 
 # ------------------------------------------------------------------ rooms
 func _build_rooms() -> void:
+	for w in WINGS:
+		var wing := Node3D.new()
+		wing.position = B(w[3], w[4], 0)
+		wing.rotation.y = deg_to_rad(w[2])
+		add_child(wing)
+		_build_wing(wing, w[0], w[1])
+	# wayfinding: which wing is where
+	var signs := [[B(12.6, 27, UP + 3.0), "A-WING  >>"], [B(-12.6, 27, UP + 3.0), "<<  B-WING"],
+		[B(0, 30.8, UP + 3.0), "C-WING  ^"], [B(0, 15.4, FLOOR + 3.6), "ALL CLASSROOMS UPSTAIRS\nA: right   B: left   C: back"]]
+	for sg in signs:
+		var l := _label3d(sg[1], 64, Color(1, 0.85, 0.3))
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.position = sg[0]
+		add_child(l)
+
+
+func _build_wing(wing: Node3D, letter: String, n: int) -> void:
 	var shirts := [Color(0.85, 0.3, 0.3), Color(0.3, 0.6, 0.35), Color(0.95, 0.85, 0.3)]
-	for k in 8:
+	var num := 201
+	for k in n:
+		var x0 := LOBBY_X + k * ROOM_W
+		for pos in [B(x0 + 4, 27, 9.3), B(x0 + 4, 33, 9.2), B(x0 + 4, 21, 9.2)]:
+			var ol := OmniLight3D.new()
+			ol.position = pos
+			ol.omni_range = 8.5
+			ol.light_energy = 0.85
+			ol.light_color = Color(1, 0.96, 0.9)
+			wing.add_child(ol)
 		for north in [true, false]:
-			var x0 := LOBBY_X + k * ROOM_W
 			var wall_y := CORR_Y1 + 0.1 if north else CORR_Y0 - 0.1
 			var into := 1.0 if north else -1.0
-			var r := {"x0": x0, "north": north, "number": "", "wall_y": wall_y, "into": into}
+			var r := {"x0": x0, "north": north, "number": "%s-%d" % [letter, num], "wall_y": wall_y,
+				"into": into, "wing": wing}
+			num += 1
 
 			var sign_root := Node3D.new()
 			sign_root.position = B(x0 + 3.2, wall_y - into * 0.16, 8.1)
@@ -264,12 +288,12 @@ func _build_rooms() -> void:
 			lbl.position.z = 0.01
 			lbl.outline_size = 0
 			sign_root.add_child(lbl)
-			add_child(sign_root)
+			wing.add_child(sign_root)
 			r.label = lbl
 
 			var door := Door.new()
 			door.position = B(x0 + DOOR_A, wall_y, UP)
-			add_child(door)
+			wing.add_child(door)
 			door.setup(into, Vector3(0, 0, into), Color(0.55, 0.36, 0.22))
 			door.bonked.connect(_on_bonk)
 			r.door = door
@@ -281,7 +305,7 @@ func _build_rooms() -> void:
 			cs.shape = bs
 			area.add_child(cs)
 			area.position = B(x0 + 4, wall_y + into * 4.6, UP + 1.5)
-			add_child(area)
+			wing.add_child(area)
 			area.body_entered.connect(_on_room_entered.bind(rooms.size()))
 
 			# the same three students in the same seats in every single room
@@ -291,19 +315,15 @@ func _build_rooms() -> void:
 				var p := make_person(shirts[s], Color(0.2, 0.2, 0.3), true)
 				p.position += B(x0 + 4 + col - 0.45, wall_y + into * dy, UP)
 				p.rotation.y = 0.0 if north else PI
-				add_child(p)
+				wing.add_child(p)
 			rooms.append(r)
 
 
 func _assign_numbers() -> void:
-	var nums := []
-	for i in rooms.size():
-		nums.append("%s%d" % [D.ROOM_PREFIX, D.FIRST_ROOM + i])
-	nums.shuffle()
-	for i in rooms.size():
-		rooms[i].number = nums[i]
-		rooms[i].label.text = nums[i]
-		rooms[i].label.modulate = Color.WHITE
+	# fixed numbers per wing (A-201.., B-201.., C-201..); shuffling is optional in data.gd
+	for r in rooms:
+		r.label.text = r.number
+		r.label.modulate = Color.WHITE
 
 
 func _shuffle_signs() -> void:
@@ -351,6 +371,24 @@ func _build_npcs() -> void:
 		p.add_child(bubble)
 		add_child(p)
 		npcs.append({"node": p, "bubble": bubble})
+	# a few people slowly wandering back and forth
+	var walks := [[B(-10, 3, FLOOR), B(-10, 13, FLOOR)], [B(6, 9, FLOOR), B(12, 13, FLOOR)],
+		[B(-3, 27, UP), B(-12, 27, UP)], [B(9, 18.5, UP), B(12, 24, UP)], [B(40, 27.5, UP), B(60, 26.5, UP)]]
+	for i in walks.size():
+		var a: Vector3 = walks[i][0]
+		var b: Vector3 = walks[i][1]
+		var p := make_person(shirts[(i + 2) % shirts.size()], Color(0.2, 0.2, 0.25), false, i % 2 == 1)
+		p.position = a
+		add_child(p)
+		var dur := a.distance_to(b) / 1.1
+		var face_b := atan2(-(b - a).x, -(b - a).z)
+		p.rotation.y = face_b
+		var tw := p.create_tween().set_loops()
+		tw.tween_property(p, "position", b, dur).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(p, "rotation:y", face_b + PI, 0.6)
+		tw.tween_property(p, "position", a, dur).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(p, "rotation:y", face_b, 0.6)
+		tw.tween_interval(randf_range(0.5, 2.0))
 
 
 func _build_guide() -> void:
@@ -515,7 +553,7 @@ func _go() -> void:
 	for r in rooms:
 		r.door.enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	_toast("CampusGPT: I have calculated the optimal route. Please turn around.")
+	_toast("CampusGPT: Your class is %s. I have calculated the optimal route. Please turn around." % target_number)
 
 
 func _on_room_entered(body: Node3D, idx: int) -> void:
@@ -531,7 +569,7 @@ func _on_room_entered(body: Node3D, idx: int) -> void:
 	_big("WRONG ROOM  -%ds" % int(D.WRONG_ROOM_PENALTY), Color(1, 0.35, 0.35))
 	_toast(D.WRONG_ROOM_LINES[rng.randi_range(0, D.WRONG_ROOM_LINES.size() - 1)])
 	_sfx("buzzer")
-	var out: Vector3 = B(r.x0 + 1.7, r.wall_y - r.into * 1.5, UP + 1)
+	var out: Vector3 = r.wing.to_global(B(r.x0 + 1.7, r.wall_y - r.into * 1.5, UP + 1))
 	player.knockback(out - player.global_position, 13.0, 4.0)
 
 
@@ -622,7 +660,7 @@ func _process(delta: float) -> void:
 					last_tick = int(time_left)
 					_sfx("tick")
 			shuffle_timer -= delta
-			if shuffle_timer <= 0:
+			if shuffle_timer <= 0 and D.SHUFFLE_ROOMS:
 				shuffle_timer = D.SHUFFLE_EVERY
 				_shuffle_signs()
 			guide_timer -= delta
@@ -727,7 +765,7 @@ func _build_ui() -> void:
 	tbox.add_child(tv)
 	target_label = _lbl("YOUR CLASS: B-201", 34, Color(1, 0.85, 0.3))
 	tv.add_child(target_label)
-	tv.add_child(_lbl("Signs may change. Facilities is optimizing.", 16, Color(0.8, 0.85, 1)))
+	tv.add_child(_lbl("Upstairs.  A-wing: right   B-wing: left   C-wing: back", 16, Color(0.8, 0.85, 1)))
 	hud.add_child(tbox)
 	toast_label = _lbl("", 26, Color(0.85, 1, 0.95))
 	toast_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -1207,25 +1245,31 @@ func _debug_shots() -> void:
 	player.reset_to(B(-7, 30, FLOOR + 0.1), 0)
 	await get_tree().create_timer(0.5).timeout
 	await _snap("11_exit_area")
-	var a0 := deg_to_rad(-400.0)
-	player.reset_to(B(-4 + 2 * cos(a0), 22 + 2 * sin(a0), FLOOR + 0.2), 0)
+	# climb: straight up the middle, then the left half loop, then onto the left landing
+	player.reset_to(B(-1.5, 14, FLOOR + 0.1), 0)
 	var w := InputEventKey.new()
 	w.keycode = KEY_W
 	w.pressed = true
 	Input.parse_input_event(w)
 	var tmax := 0.0
-	for f in 300:
-		var bp := Vector2(player.global_position.x + 4, -player.global_position.z - 22)
-		var r := bp.length()
-		var t := bp.angle()
-		var dir := Vector2(-sin(t), cos(t)) - bp.normalized() * (r - 2.0) * 0.6
-		if f > 0 and t > deg_to_rad(-80) and t < deg_to_rad(-30) and player.global_position.y > UP - 0.3:
-			dir = Vector2(0, -1)
+	for f in 360:
+		var bx := player.global_position.x
+		var by := -player.global_position.z
+		var dir := Vector2(0, 1)
+		if by > 22.4 or bx < -2.6:
+			var v := Vector2(bx + 4, by - 22.5)
+			var t := v.angle()
+			if bx < -5.0 and by < 22.6:
+				dir = Vector2(0, -1)
+			else:
+				dir = Vector2(-sin(t), cos(t)) - v.normalized() * (v.length() - 2.5) * 0.6
 		player.rotation.y = atan2(-dir.x, dir.y)
 		tmax = max(tmax, player.global_position.y)
 		await get_tree().physics_frame
+		if by < 19 and bx < -5:
+			break
 	w.pressed = false
 	Input.parse_input_event(w)
-	print("TEST spiral: final y=", player.global_position.y, " max y=", tmax, " (upper floor y=", UP, ")")
+	print("TEST stairs: final y=", player.global_position.y, " pos=", player.global_position, " max y=", tmax, " (upper floor y=", UP, ")")
 	await _snap("12_after_stairs")
 	get_tree().quit()

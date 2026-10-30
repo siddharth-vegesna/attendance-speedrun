@@ -26,7 +26,7 @@ CORR_Y0, CORR_Y1 = 25.0, 29.0
 NORTH_Y1, SOUTH_Y0 = 37.0, 17.0
 UP_CEIL = 9.8
 DOOR_A, DOOR_B, DOOR_TOP = 1.0, 2.4, 8.6   # door gap offsets inside a room, top height
-BUILD_X0, BUILD_X1, BUILD_Y1, BUILD_TOP = -30.0, 78.4, 40.0, 16.0
+BUILD_X0, BUILD_X1, BUILD_Y1, BUILD_TOP = -78.4, 78.4, 40.0, 16.0
 
 # ---------------------------------------------------------------- reset scene
 for o in list(bpy.data.objects):
@@ -284,9 +284,9 @@ FACE_POS_X = (90, 0, 90)
 FACE_NEG_X = (90, 0, -90)
 
 # ================================================================ PLAZA
-Mesh("Plaza", BRICK, col=True, tile=3.0).box(-45, 95, -45, 0.2, -0.2, 0).done()
+Mesh("Plaza", BRICK, col=True, tile=3.0).box(-85, 95, -45, 0.2, -0.2, 0).done()
 bounds = Mesh("PlazaBounds", INVIS, colonly=True)
-bounds.box(-45, -44, -45, 1, 0, 6).box(94, 95, -45, 1, 0, 6).box(-45, 95, -45, -44, 0, 6)
+bounds.box(-85, -84, -45, 1, 0, 6).box(94, 95, -45, 1, 0, 6).box(-85, 95, -45, -44, 0, 6)
 bounds.done()
 
 # grass beds + palms
@@ -317,12 +317,28 @@ grass.done(); trunk.done(); leaves.done()
 
 # ================================================================ ENTRANCE STEPS + PORTICO
 steps = Mesh("Steps", STONE, tile=1.5)
-for i in range(4):
-    steps.box(-10, 10, -8 + i, -4, 0, 0.3 * (i + 1))
+for i in range(4):          # curved steps bulging out from the entrance (centre 0, 6)
+    steps.arc(0, 6, 0, 0.3 * (i + 1), 9.5, 14.2 - i, math.radians(228), math.radians(312), seg=28)
 steps.done()
 Mesh("StepsRamp", INVIS, colonly=True).hexa(
     lambda xi, yi, zi: ((-10, 10)[xi], (-8.3, -4)[yi], (-0.2, (0.0, FLOOR)[yi])[zi])).done()
 Mesh("PorticoFloor", STONE, col=True, tile=1.5).box(-10, 10, -4, 0.2, 0, FLOOR).done()
+# the wings next to the entrance sit at an angle to it (hollow shells: outside only)
+for sgn in (-1, 1):
+    wing_m = Mesh("AngledWing", PEACH, col=True, tile=2.0)
+    wing_m.box(0, sgn * 20, 0, 8, 0, BUILD_TOP)
+    wo, ww, wgl = Mesh("AWinSurround", ORANGE), Mesh("AWinFrame", WHITE), Mesh("AWinGlass", WINGLASS)
+    for wx in (3.5, 8.5, 13.5, 18):
+        wx *= sgn
+        for zc in (3.4, 7.4, 11.4):
+            wo.box(wx - 1.45, wx + 1.45, -0.06, 0, zc - 1.25, zc + 1.25)
+            ww.box(wx - 1.2, wx + 1.2, -0.1, -0.06, zc - 1.0, zc + 1.0)
+            wgl.box(wx - 1.08, wx + 1.08, -0.13, -0.1, zc - 0.88, zc + 0.88)
+    wo.box(0, sgn * 20, -0.1, 0, 14.6, 14.8)
+    for m_ in (wing_m, wo, ww, wgl):
+        ob = m_.done()
+        ob.location = (sgn * 14.5, 0.4, 0)
+        ob.rotation_euler = (0, 0, -sgn * math.radians(22))
 
 canopy = Mesh("Canopy", PEACH)
 canopy.box(-9.5, 9.5, -5, 0, 9, 13.2)
@@ -368,13 +384,16 @@ shell.box(-7, 7, -0.4, 0, 0, FLOOR)
 # sides, back, roof
 shell.box(BUILD_X0 - 0.4, BUILD_X0, 0, BUILD_Y1, 0, BUILD_TOP)
 shell.box(BUILD_X1, BUILD_X1 + 0.4, 0, BUILD_Y1, 0, BUILD_TOP)
-shell.box(BUILD_X0, BUILD_X1, BUILD_Y1, BUILD_Y1 + 0.4, 0, BUILD_TOP)
+shell.box(BUILD_X0, -10.6, BUILD_Y1, BUILD_Y1 + 0.4, 0, BUILD_TOP)
+shell.box(10.6, BUILD_X1, BUILD_Y1, BUILD_Y1 + 0.4, 0, BUILD_TOP)
+shell.box(-10.6, 10.6, BUILD_Y1, BUILD_Y1 + 0.4, 0, UP - 0.4)
+shell.box(-10.6, 10.6, BUILD_Y1, BUILD_Y1 + 0.4, UP_CEIL + 0.4, BUILD_TOP)
 shell.box(BUILD_X0 - 0.4, BUILD_X1 + 0.4, -0.4, BUILD_Y1 + 0.4, BUILD_TOP, BUILD_TOP + 0.4)
 shell.done()
 
 # facade windows: orange surround, white frame, dark glass, mullion
 w_or, w_wh, w_gl = Mesh("WinSurround", ORANGE), Mesh("WinFrame", WHITE), Mesh("WinGlass", WINGLASS)
-xs = [x for x in range(-27, -9, 5)] + [x for x in range(12, 77, 5)]
+xs = [x for x in range(-77, -9, 5)] + [x for x in range(12, 77, 5)]
 for x in xs:
     if -11 < x < 11:
         continue
@@ -396,13 +415,18 @@ w_or.done(); w_wh.done(); w_gl.done()
 # ================================================================ LOBBY
 Mesh("LobbyFloor", WOOD, col=True, tile=4.0).box(-LOBBY_X, LOBBY_X, 0, LOBBY_Y, FLOOR - 0.2, FLOOR).done()
 lw = Mesh("LobbyWalls", WHITE, col=True, tile=2.0)
-lw.box(-LOBBY_X - 0.4, -LOBBY_X, 0, LOBBY_Y, FLOOR, LOBBY_TOP)                       # left
+lw.box(-LOBBY_X - 0.4, -LOBBY_X, 0, CORR_Y0, FLOOR, LOBBY_TOP)                        # left, B-wing opening
+lw.box(-LOBBY_X - 0.4, -LOBBY_X, CORR_Y1, LOBBY_Y, FLOOR, LOBBY_TOP)
+lw.box(-LOBBY_X - 0.4, -LOBBY_X, CORR_Y0, CORR_Y1, FLOOR, UP)
+lw.box(-LOBBY_X - 0.4, -LOBBY_X, CORR_Y0, CORR_Y1, UP_CEIL, LOBBY_TOP)
 lw.box(LOBBY_X, LOBBY_X + 0.4, 0, CORR_Y0, FLOOR, LOBBY_TOP)                         # right, before corridor
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y1, LOBBY_Y, FLOOR, LOBBY_TOP)
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y0, CORR_Y1, FLOOR, UP)
 lw.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y0, CORR_Y1, UP_CEIL, LOBBY_TOP)
 lw.box(-LOBBY_X, -12, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)                     # back, around the exit opening
-lw.box(-2, LOBBY_X, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)
+lw.box(2, LOBBY_X, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, LOBBY_TOP)                         # C-wing opening x -2..2
+lw.box(-2, 2, LOBBY_Y, LOBBY_Y + 0.4, FLOOR, UP)
+lw.box(-2, 2, LOBBY_Y, LOBBY_Y + 0.4, UP_CEIL, LOBBY_TOP)
 lw.box(-12, -2, LOBBY_Y, LOBBY_Y + 0.4, 4.4, LOBBY_TOP)
 lw.box(-LOBBY_X, -7, 0, 0.3, FLOOR, LOBBY_TOP)                                     # inner front
 lw.box(7, LOBBY_X, 0, 0.3, FLOOR, LOBBY_TOP)
@@ -424,14 +448,19 @@ text("BITS Pilani, Dubai Campus", (0, -0.14, 6.9), FACE_NEG_Y, 0.42, WHITE, F_SE
 
 # mezzanine slab (hole over the grand staircase x -2.5..2.5, y 18..28)
 mz = Mesh("Mezzanine", WOOD, col=True, tile=4.0)
-SPX, SPY = -4.0, 22.0          # spiral staircase centre (floor plan: left of centre, behind circle 2)
-mz.box(-LOBBY_X, LOBBY_X, MEZZ_Y, 18.6, UP - 0.2, UP)
-mz.box(-LOBBY_X, LOBBY_X, 25.4, LOBBY_Y, UP - 0.2, UP)
-mz.box(-LOBBY_X, SPX - 3.4, 18.6, 25.4, UP - 0.2, UP)
-mz.box(SPX + 3.4, LOBBY_X, 18.6, 25.4, UP - 0.2, UP)
-mz.box(SPX - 0.9, SPX + 0.9, 18.6, SPY - 1.0, UP - 0.2, UP)     # top landing
+# hole for the split staircase: x -7.6..7.6, y 17..26.2; the two half loops land on the side strips
+mz.box(-LOBBY_X, LOBBY_X, MEZZ_Y, 17.0, UP - 0.2, UP)                 # front walkway
+mz.box(-LOBBY_X, LOBBY_X, 26.2, LOBBY_Y, UP - 0.2, UP)                # back
+mz.box(-LOBBY_X, -7.6, 17.0, 26.2, UP - 0.2, UP)
+mz.box(7.6, LOBBY_X, 17.0, 26.2, UP - 0.2, UP)
+mz.box(-7.6, -5.5, 17.0, 22.5, UP - 0.2, UP)                          # left top landing
+mz.box(5.5, 7.6, 17.0, 22.5, UP - 0.2, UP)                            # right top landing
 mz.done()
-Mesh("MezzUnderside", WHITE).box(-LOBBY_X, LOBBY_X, MEZZ_Y, LOBBY_Y, UP - 0.25, UP - 0.2).done()
+mu = Mesh("MezzUnderside", WHITE)
+for (a, b, c, d) in ((-LOBBY_X, LOBBY_X, MEZZ_Y, 17.0), (-LOBBY_X, LOBBY_X, 26.2, LOBBY_Y), (-LOBBY_X, -7.6, 17.0, 26.2),
+                     (7.6, LOBBY_X, 17.0, 26.2), (-7.6, -5.5, 17.0, 22.5), (5.5, 7.6, 17.0, 22.5)):
+    mu.box(a, b, c, d, UP - 0.25, UP - 0.2)
+mu.done()
 Mesh("Fascia", WHITE, col=True).box(-LOBBY_X, LOBBY_X, MEZZ_Y - 0.4, MEZZ_Y, 4.5, UP).done()
 text("BITS Pilani, Dubai Campus", (0.7, MEZZ_Y - 0.45, 5.3), FACE_NEG_Y, 0.95, NAVY, F_SERIF, ext=0.05)
 Mesh("SignHalo", mat("SignHalo", "#FFFFFF", emit=0.5)).box(-6.2, 7.6, MEZZ_Y - 0.41, MEZZ_Y - 0.4, 4.85, 5.75).done()
@@ -458,44 +487,52 @@ def railing_y(y0, y1, x):
         y += 0.3
     rail_c.box(x - 0.1, x + 0.1, y0, y1, UP, UP + 1.2)
 railing_x(-LOBBY_X, LOBBY_X, MEZZ_Y + 0.1)
-railing_x(SPX - 3.4, SPX - 0.9, 18.7)
-railing_x(SPX + 0.9, SPX + 3.4, 18.7)
-railing_x(SPX - 3.4, SPX + 3.4, 25.3)
-railing_y(18.6, 25.4, SPX - 3.3)
-railing_y(18.6, 25.4, SPX + 3.3)
+railing_x(-5.5, 5.5, 17.1)
+railing_y(17.0, 22.5, -5.45)
+railing_y(17.0, 22.5, 5.45)
+railing_y(22.5, 26.2, -7.7)
+railing_y(22.5, 26.2, 7.7)
+railing_x(-7.6, 7.6, 26.1)
 rail_v.done(); rail_c.done()
 
-# spiral staircase (STAIR-3): 300 degrees counter-clockwise, ends on the landing facing the entrance
-st = Mesh("SpiralStairs", STONE, tile=1.5)
-sr = Mesh("SpiralRamp", INVIS, colonly=True)
-side = Mesh("SpiralRail", WHITE, col=True)
-A1 = math.radians(-90)
-A0 = A1 - math.radians(300)
-N = 24
-for k in range(N):
-    t0 = A0 + (A1 - A0) * k / N
-    t1 = A0 + (A1 - A0) * (k + 1) / N
-    h0 = FLOOR + (UP - FLOOR) * k / N
-    h1 = FLOOR + (UP - FLOOR) * (k + 1) / N
-    def step(xi, yi, zi, t0=t0, t1=t1, h1=h1):
-        t = (t0, t1)[xi]
-        r = (3.0, 0.9)[yi]
-        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (h1 - 0.25, h1)[zi])
-    st.hexa(step)
-    def ramp(xi, yi, zi, t0=t0, t1=t1, h0=h0, h1=h1):
-        t = (t0, t1)[xi]
-        r = (3.0, 0.9)[yi]
-        top = (h0, h1)[xi]
-        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (top - 0.35, top)[zi])
-    sr.hexa(ramp)
-    def wall(xi, yi, zi, t0=t0, t1=t1, h0=h0, h1=h1):
-        t = (t0, t1)[xi]
-        r = (3.12, 3.0)[yi]
-        top = (h0, h1)[xi]
-        return (SPX + r * math.cos(t), SPY + r * math.sin(t), (top - 0.3, top + 1.0)[zi])
-    side.hexa(wall)
-st.done(); sr.done(); side.done()
-Mesh("SpiralCore", WHITE, col=True).cyl(SPX, SPY, FLOOR, UP, 0.9, 24).done()
+# grand staircase (STAIR-3): one wide flight up the middle to a landing, then it splits into two
+# flights that each curve half a loop (180 deg) round the back and arrive on the side landings
+MID = (FLOOR + UP) / 2
+st = Mesh("GrandStairs", STONE, tile=1.5)
+sr = Mesh("StairRamp", INVIS, colonly=True)
+sw = Mesh("StairBalustrade", WHITE)
+for k in range(10):
+    st.box(-2.5, 2.5, 16.5 + 0.5 * k, 22.6, FLOOR, FLOOR + (MID - FLOOR) * (k + 1) / 10)
+sr.hexa(lambda xi, yi, zi: ((-2.5, 2.5)[xi], (16.3, 21.5)[yi], (FLOOR - 0.1, (FLOOR, MID)[yi])[zi]))
+sr.box(-2.5, 2.5, 21.5, 22.6, MID - 0.3, MID)                                    # landing
+sr.box(-2.7, -2.5, 16.3, 22.6, FLOOR, MID + 1.0).box(2.5, 2.7, 16.3, 22.6, FLOOR, MID + 1.0)
+sw.box(-2.7, -2.5, 16.5, 22.6, FLOOR, MID + 1.0).box(2.5, 2.7, 16.5, 22.6, FLOOR, MID + 1.0)
+N = 14
+for side in (-1, 1):                 # -1: left loop (counter-clockwise), +1: right loop (clockwise)
+    cx, cy = side * 4.0, 22.5
+    for k in range(N):
+        a0 = math.pi * k / N
+        a1 = math.pi * (k + 1) / N
+        h0 = MID + (UP - MID) * k / N
+        h1 = MID + (UP - MID) * (k + 1) / N
+        # angle measured from the stair's inner edge (+x for the left loop), mirrored for the right
+        P = lambda r, a: (cx - side * r * math.cos(a), cy + r * math.sin(a))
+        def seg(xi, yi, zi, a0=a0, a1=a1, z=None, ri=(3.5, 1.5)):
+            x, y = P(ri[yi], (a0, a1)[xi])
+            return (x, y, z[xi][zi])
+        if side < 0:
+            stp = lambda xi, yi, zi, a0=a0, a1=a1, h1=h1: (*P((3.5, 1.5)[yi], (a0, a1)[xi]), (h1 - 0.25, h1)[zi])
+            rmp = lambda xi, yi, zi, a0=a0, a1=a1, h0=h0, h1=h1: (*P((3.5, 1.5)[yi], (a0, a1)[xi]), ((h0, h1)[xi] - 0.35, (h0, h1)[xi])[zi])
+        else:   # mirrored winding flips the box orientation, so swap the radius order
+            stp = lambda xi, yi, zi, a0=a0, a1=a1, h1=h1: (*P((1.5, 3.5)[yi], (a0, a1)[xi]), (h1 - 0.25, h1)[zi])
+            rmp = lambda xi, yi, zi, a0=a0, a1=a1, h0=h0, h1=h1: (*P((1.5, 3.5)[yi], (a0, a1)[xi]), ((h0, h1)[xi] - 0.35, (h0, h1)[xi])[zi])
+        st.hexa(stp)
+        sr.hexa(rmp)
+        # balustrade along the outer edge (visual)
+        o0, o1 = P(3.55, a0), P(3.55, a1)
+        sw.quad([(o0[0], o0[1], h0), (o1[0], o1[1], h1), (o1[0], o1[1], h1 + 1.0), (o0[0], o0[1], h0 + 1.0)])
+        sw.quad([(o0[0], o0[1], h0 + 1.0), (o1[0], o1[1], h1 + 1.0), (o1[0], o1[1], h1), (o0[0], o0[1], h0)])
+st.done(); sr.done(); sw.done()
 
 # hanging banners: innovate / achieve / lead
 for (bx, m, word) in ((-2.3, YELLOW, "innovate"), (0, LBLUE, "achieve"), (2.3, RED, "lead")):
@@ -564,7 +601,7 @@ for (cx, cy) in ((-8.5, 7.5), (2.5, 13.0)):
     seat_r.arc(cx, cy, FLOOR + 0.45, FLOOR + 0.6, 0.9, 2.0, 0, 2 * math.pi, seg=32)
     seat_r.arc(cx, cy, FLOOR + 0.45, FLOOR + 1.15, 0.6, 0.9, 0, 2 * math.pi, seg=32)   # centre backrest
 seat_w.done(); seat_r.done()
-Mesh("TealSofa", TEAL, col=True).arc(9, 24, FLOOR, FLOOR + 0.55, 1.5, 2.3,
+Mesh("TealSofa", TEAL, col=True).arc(11, 28, FLOOR, FLOOR + 0.55, 1.5, 2.3,
                                     math.radians(90), math.radians(300)).done()
 
 # ================================================================ EXIT AREA behind the stairs
@@ -625,71 +662,91 @@ for x in range(-12, 13, 3):
         dl.cyl(x + 1.5, y, UP - 0.28, UP - 0.25, 0.11, 10)
 dl.done()
 
-# ================================================================ UPPER FLOOR: corridor + 16 classrooms
-Mesh("UpperFloor", TILE, col=True, tile=2.0).box(LOBBY_X, WING_X1, SOUTH_Y0 - 0.2, NORTH_Y1 + 0.2, UP - 0.2, UP).done()
-Mesh("UpperCeiling", WHITE).box(LOBBY_X, WING_X1, SOUTH_Y0 - 0.2, NORTH_Y1 + 0.2, UP_CEIL, UP_CEIL + 0.2).done()
+# ================================================================ UPPER FLOOR: classroom wings
+# One wing = a corridor with n classrooms on each side, built in local coords (corridor starts at
+# x=LOBBY_X, runs +x) and then rotated/moved into place. Godot mirrors this in main.gd WINGS.
+from mathutils import Matrix
+def build_wing(n):
+    WX1 = LOBBY_X + n * ROOM_W
+    Mesh("UpperFloor", TILE, col=True, tile=2.0).box(LOBBY_X, WX1, SOUTH_Y0 - 0.2, NORTH_Y1 + 0.2, UP - 0.2, UP).done()
+    Mesh("UpperCeiling", WHITE).box(LOBBY_X, WX1, SOUTH_Y0 - 0.2, NORTH_Y1 + 0.2, UP_CEIL, UP_CEIL + 0.2).done()
 
-walls = Mesh("ClassWalls", CREAM, col=True, tile=2.0)
-walls.box(LOBBY_X, WING_X1, NORTH_Y1, NORTH_Y1 + 0.2, UP, UP_CEIL)            # north outer
-walls.box(LOBBY_X, WING_X1, SOUTH_Y0 - 0.2, SOUTH_Y0, UP, UP_CEIL)            # south outer
-walls.box(WING_X1 - 0.2, WING_X1, SOUTH_Y0, NORTH_Y1, UP, UP_CEIL)            # corridor end
-for k in range(1, 8):                                                       # partitions
-    x = LOBBY_X + k * ROOM_W
-    walls.box(x - 0.1, x + 0.1, CORR_Y1, NORTH_Y1, UP, UP_CEIL)
-    walls.box(x - 0.1, x + 0.1, SOUTH_Y0, CORR_Y0, UP, UP_CEIL)
-walls.box(LOBBY_X, LOBBY_X + 0.4, SOUTH_Y0, CORR_Y0, UP, UP_CEIL)
-walls.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y1, NORTH_Y1, UP, UP_CEIL)
-for wy0, wy1 in ((CORR_Y1, CORR_Y1 + 0.2), (CORR_Y0 - 0.2, CORR_Y0)):       # corridor walls with door gaps
-    for k in range(8):
+    walls = Mesh("ClassWalls", CREAM, col=True, tile=2.0)
+    walls.box(LOBBY_X, WX1, NORTH_Y1, NORTH_Y1 + 0.2, UP, UP_CEIL)            # north outer
+    walls.box(LOBBY_X, WX1, SOUTH_Y0 - 0.2, SOUTH_Y0, UP, UP_CEIL)            # south outer
+    walls.box(WX1 - 0.2, WX1, SOUTH_Y0, NORTH_Y1, UP, UP_CEIL)            # corridor end
+    for k in range(1, n):                                                       # partitions
+        x = LOBBY_X + k * ROOM_W
+        walls.box(x - 0.1, x + 0.1, CORR_Y1, NORTH_Y1, UP, UP_CEIL)
+        walls.box(x - 0.1, x + 0.1, SOUTH_Y0, CORR_Y0, UP, UP_CEIL)
+    walls.box(LOBBY_X, LOBBY_X + 0.4, SOUTH_Y0, CORR_Y0, UP, UP_CEIL)
+    walls.box(LOBBY_X, LOBBY_X + 0.4, CORR_Y1, NORTH_Y1, UP, UP_CEIL)
+    for wy0, wy1 in ((CORR_Y1, CORR_Y1 + 0.2), (CORR_Y0 - 0.2, CORR_Y0)):       # corridor walls with door gaps
+        for k in range(n):
+            x0 = LOBBY_X + k * ROOM_W
+            walls.box(x0, x0 + DOOR_A, wy0, wy1, UP, UP_CEIL)
+            walls.box(x0 + DOOR_B, x0 + ROOM_W, wy0, wy1, UP, UP_CEIL)
+            walls.box(x0 + DOOR_A, x0 + DOOR_B, wy0, wy1, DOOR_TOP, UP_CEIL)
+    walls.done()
+
+    # skirting stripe along corridor (navy, like the campus signage)
+    sk = Mesh("Skirting", NAVY)
+    sk.box(LOBBY_X, WX1, CORR_Y1 - 0.03, CORR_Y1, UP, UP + 0.15)
+    sk.box(LOBBY_X, WX1, CORR_Y0, CORR_Y0 + 0.03, UP, UP + 0.15)
+    sk.done()
+
+    board, frame = Mesh("Boards", BOARD), Mesh("BoardFrames", METAL)
+    desks, legs, chairs = Mesh("Desks", DESK, col=True), Mesh("DeskLegs", METAL), Mesh("Chairs", CHAIR)
+    tdesk = Mesh("TeacherDesks", mat("TeacherDesk", "#8E6A4A"), col=True)
+    panels = Mesh("CeilingPanels", PANEL)
+    proj = Mesh("Projectors", METAL)
+    for k in range(n):
         x0 = LOBBY_X + k * ROOM_W
-        walls.box(x0, x0 + DOOR_A, wy0, wy1, UP, UP_CEIL)
-        walls.box(x0 + DOOR_B, x0 + ROOM_W, wy0, wy1, UP, UP_CEIL)
-        walls.box(x0 + DOOR_A, x0 + DOOR_B, wy0, wy1, DOOR_TOP, UP_CEIL)
-walls.done()
+        c = x0 + ROOM_W / 2
+        for north in (True, False):
+            # local y measured from the corridor wall (0) to the far wall (8)
+            Y = (lambda d: CORR_Y1 + d) if north else (lambda d: CORR_Y0 - d)
+            far = Y(8.0)
+            fw = -1 if north else 1      # direction from far wall back into room
+            frame.box(c - 2.6, c + 2.6, far + fw * 0.02, far + fw * 0.08, UP + 0.95, UP + 2.45)
+            board.box(c - 2.5, c + 2.5, far + fw * 0.08, far + fw * 0.11, UP + 1.0, UP + 2.4)
+            proj.box(c - 0.25, c + 0.25, Y(4.2), Y(4.6), UP_CEIL - 0.35, UP_CEIL - 0.15)
+            tdesk.box(c + 1.4, c + 3.2, Y(6.4), Y(7.1), UP, UP + 0.8)
+            for row in range(4):
+                for col in (-2.6, 0, 2.6):
+                    dy = 1.6 + row * 1.25
+                    desks.box(c + col - 0.9, c + col + 0.9, Y(dy), Y(dy + 0.6), UP + 0.72, UP + 0.76)
+                    legs.box(c + col - 0.88, c + col - 0.84, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
+                    legs.box(c + col + 0.84, c + col + 0.88, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
+                    for sx in (-0.45, 0.45):
+                        chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.55), Y(dy - 0.1), UP + 0.42, UP + 0.47)
+                        chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.6), Y(dy - 0.55), UP + 0.47, UP + 0.95)
+                        legs.box(c + col + sx - 0.02, c + col + sx + 0.02, Y(dy - 0.35), Y(dy - 0.31), UP, UP + 0.42)
+            for py in (2.5, 5.5):
+                panels.box(c - 0.9, c + 0.9, Y(py), Y(py + 0.6), UP_CEIL - 0.02, UP_CEIL)
+    for i in range(2 * n):
+        x = LOBBY_X + 1.5 + i * 4
+        panels.box(x, x + 1.2, CORR_Y0 + 1.7, CORR_Y1 - 1.7, UP_CEIL - 0.02, UP_CEIL)
+    for m_ in (board, frame, desks, legs, chairs, tdesk, panels, proj):
+        m_.done()
 
-# skirting stripe along corridor (navy, like the campus signage)
-sk = Mesh("Skirting", NAVY)
-sk.box(LOBBY_X, WING_X1, CORR_Y1 - 0.03, CORR_Y1, UP, UP + 0.15)
-sk.box(LOBBY_X, WING_X1, CORR_Y0, CORR_Y0 + 0.03, UP, UP + 0.15)
-sk.done()
+    # corridor end: fake exit sign
+    text("EXIT?", (WX1 - 0.25, 27, 8.9), FACE_NEG_X, 0.4, mat("ExitGreen", "#20B05A", emit=3.0), F_BLACK, ext=0.01)
 
-board, frame = Mesh("Boards", BOARD), Mesh("BoardFrames", METAL)
-desks, legs, chairs = Mesh("Desks", DESK, col=True), Mesh("DeskLegs", METAL), Mesh("Chairs", CHAIR)
-tdesk = Mesh("TeacherDesks", mat("TeacherDesk", "#8E6A4A"), col=True)
-panels = Mesh("CeilingPanels", PANEL)
-proj = Mesh("Projectors", METAL)
-for k in range(8):
-    x0 = LOBBY_X + k * ROOM_W
-    c = x0 + ROOM_W / 2
-    for north in (True, False):
-        # local y measured from the corridor wall (0) to the far wall (8)
-        Y = (lambda d: CORR_Y1 + d) if north else (lambda d: CORR_Y0 - d)
-        far = Y(8.0)
-        fw = -1 if north else 1      # direction from far wall back into room
-        frame.box(c - 2.6, c + 2.6, far + fw * 0.02, far + fw * 0.08, UP + 0.95, UP + 2.45)
-        board.box(c - 2.5, c + 2.5, far + fw * 0.08, far + fw * 0.11, UP + 1.0, UP + 2.4)
-        proj.box(c - 0.25, c + 0.25, Y(4.2), Y(4.6), UP_CEIL - 0.35, UP_CEIL - 0.15)
-        tdesk.box(c + 1.4, c + 3.2, Y(6.4), Y(7.1), UP, UP + 0.8)
-        for row in range(4):
-            for col in (-2.6, 0, 2.6):
-                dy = 1.6 + row * 1.25
-                desks.box(c + col - 0.9, c + col + 0.9, Y(dy), Y(dy + 0.6), UP + 0.72, UP + 0.76)
-                legs.box(c + col - 0.88, c + col - 0.84, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
-                legs.box(c + col + 0.84, c + col + 0.88, Y(dy + 0.05), Y(dy + 0.55), UP, UP + 0.72)
-                for sx in (-0.45, 0.45):
-                    chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.55), Y(dy - 0.1), UP + 0.42, UP + 0.47)
-                    chairs.box(c + col + sx - 0.22, c + col + sx + 0.22, Y(dy - 0.6), Y(dy - 0.55), UP + 0.47, UP + 0.95)
-                    legs.box(c + col + sx - 0.02, c + col + sx + 0.02, Y(dy - 0.35), Y(dy - 0.31), UP, UP + 0.42)
-        for py in (2.5, 5.5):
-            panels.box(c - 0.9, c + 0.9, Y(py), Y(py + 0.6), UP_CEIL - 0.02, UP_CEIL)
-for i in range(16):
-    x = LOBBY_X + 1.5 + i * 4
-    panels.box(x, x + 1.2, CORR_Y0 + 1.7, CORR_Y1 - 1.7, UP_CEIL - 0.02, UP_CEIL)
-for m_ in (board, frame, desks, legs, chairs, tdesk, panels, proj):
-    m_.done()
 
-# corridor end: fake exit sign
-text("EXIT?", (WING_X1 - 0.25, 27, 8.9), FACE_NEG_X, 0.4, mat("ExitGreen", "#20B05A", emit=3.0), F_BLACK, ext=0.01)
+def place_wing(n, deg, tx, ty):
+    before = set(bpy.data.objects.keys())
+    build_wing(n)
+    M = Matrix.Translation((tx, ty, 0)) @ Matrix.Rotation(math.radians(deg), 4, "Z")
+    for name in set(bpy.data.objects.keys()) - before:
+        ob = bpy.data.objects[name]
+        ob.matrix_world = M @ ob.matrix_world
+
+WINGS = ((8, 0, 0, 0),         # A-wing: east, the original corridor
+         (8, 180, 0, 54),      # B-wing: west, mirrored
+         (4, 90, 27, 18))      # C-wing: north, behind the lobby
+for w in WINGS:
+    place_wing(*w)
 
 # ================================================================ export
 bpy.ops.wm.save_as_mainfile(filepath=ROOT + "/blender/campus.blend")

@@ -9,7 +9,8 @@ const WRONG_ROOM_PENALTY := 7.0
 const SHUFFLE_EVERY := 7.0
 const QUIZ_TIME := 15.0
 const MIN_ATTENDANCE := 60.0     # BITS rule: below this you are debarred
-const BONK_CHANCE := 0.35
+const BONK_CHANCE := 0.0       # doors that slam into you (0 = off)
+const SHUFFLE_ROOMS := false    # room signs re-shuffling during the run
 
 # Pick-a-subject questions. "correct" is the index (0-3) of the right answer.
 # The first six are real courses; the rest are for people who don't want to be tested.
