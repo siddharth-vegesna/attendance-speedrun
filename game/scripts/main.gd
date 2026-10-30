@@ -19,7 +19,7 @@ const SPAWN := Vector3(0, 0.2, 28)
 # Must match WINGS in blender/build_campus.py: [letter, rooms per side, rotation deg, x, y] (Blender coords)
 const WINGS := [["A", 8, 0.0, 0.0, 0.0], ["B", 8, 180.0, 0.0, 54.0], ["C", 4, 90.0, 27.0, 18.0]]
 
-enum State { TITLE, SIGNIN, CUTSCENE, COUNTDOWN, RUN, QUIZ, RESULT }
+enum State { TITLE, SIGNIN, CUTSCENE, ARRIVAL, COUNTDOWN, RUN, QUIZ, RESULT }
 var state := State.TITLE
 
 var player: CharacterBody3D
@@ -82,6 +82,9 @@ var cut_cam: Camera3D
 var cut_student: Node3D
 var cut_prof: Node3D
 var cut_line := -1
+var script_lines: Array = []
+var script_done: Callable
+var portal: Node3D
 var cut_chars := 0.0
 var guide: Node3D
 var guide_bubble: Label3D
@@ -450,6 +453,10 @@ func _start_cutscene() -> void:
 	rooms[CUTSCENE_ROOM].door.open_instant()
 	cut_student.position = B(15.7, 26.6, UP)
 	cut_student.rotation.y = 0
+	cut_student.scale = Vector3.ONE
+	cut_student.visible = true
+	script_lines = D.CUTSCENE
+	script_done = _portal_out
 	cut_prof.position = B(17.2, 35.6, UP)
 	cut_prof.rotation.y = PI
 	dialog_panel.visible = true
@@ -467,17 +474,17 @@ func _start_cutscene() -> void:
 
 
 func _next_line() -> void:
-	if state != State.CUTSCENE:
+	if state != State.CUTSCENE and state != State.ARRIVAL:
 		return
 	cut_line += 1
-	if cut_line >= D.CUTSCENE.size():
-		_end_cutscene()
+	if cut_line >= script_lines.size():
+		_finish_script()
 		return
-	var line: Array = D.CUTSCENE[cut_line]
+	var line: Array = script_lines[cut_line]
 	var speaker: String = line[0]
 	dialog_name.text = ("%s (LATE)" % student_name.to_upper()) if speaker == "STUDENT" else "THE PROFESSOR"
 	dialog_name.modulate = Color(0.5, 0.75, 1) if speaker == "STUDENT" else Color(1, 0.85, 0.3)
-	dialog_text.text = line[1]
+	dialog_text.text = str(line[1]).replace("{name}", student_name).replace("{subject}", subject)
 	dialog_text.visible_characters = 0
 	cut_chars = 0.0
 	var who := cut_student if speaker == "STUDENT" else cut_prof
@@ -498,6 +505,61 @@ func _advance_dialog() -> void:
 		cut_chars = 9999.0
 	else:
 		_next_line()
+
+
+func _finish_script() -> void:
+	if state != State.CUTSCENE and state != State.ARRIVAL:
+		return
+	cut_line = -1
+	dialog_panel.visible = false
+	skip_button.visible = false
+	script_done.call()
+
+
+# the professor shoots a portal and the student gets sucked back to the main entrance
+func _portal_out() -> void:
+	state = State.COUNTDOWN
+	if portal:
+		portal.queue_free()
+	portal = Node3D.new()
+	add_child(portal)
+	portal.position = B(15.5, 32.4, UP + 1.15)
+	portal.rotation.y = 0.9
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.85
+	ring.outer_radius = 1.05
+	var ring_mi := _mesh(ring, Vector3.ZERO, Color(0.2, 0.9, 1.0), 6.0)
+	ring_mi.rotation.x = PI / 2
+	portal.add_child(ring_mi)
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.88
+	disc.bottom_radius = 0.88
+	disc.height = 0.02
+	var disc_mi := _mesh(disc, Vector3.ZERO, Color(0.55, 0.2, 1.0), 3.0)
+	disc_mi.rotation.x = PI / 2
+	portal.add_child(disc_mi)
+	portal.scale = Vector3.ONE * 0.01
+	var shot := _mesh(_sphere(0.12), cut_prof.position + Vector3(0, 1.4, 0), Color(0.3, 1, 1), 8.0)
+	add_child(shot)
+	_sfx("go")
+	var tw := create_tween()
+	tw.tween_property(shot, "position", portal.position, 0.3)
+	tw.tween_callback(shot.queue_free)
+	tw.tween_callback(func(): _flash(Color(0.5, 0.9, 1, 0.5)); _sfx("bonk"))
+	tw.tween_property(portal, "scale", Vector3.ONE * 1.1, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(portal, "rotation:z", 6.0, 1.6)
+	tw.tween_property(cut_student, "position", portal.position - Vector3(0, 1.0, 0), 0.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(cut_student, "scale", Vector3.ONE * 0.05, 0.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(cut_student, "rotation:y", 12.0, 0.6)
+	tw.tween_callback(func(): _flash(Color(1, 1, 1, 0.9)))
+	tw.tween_property(portal, "scale", Vector3.ONE * 0.01, 0.3)
+	tw.tween_property(fade, "color:a", 1.0, 0.3)
+	tw.tween_callback(func(): portal.queue_free(); portal = null; cut_student.visible = false; _begin_run())
+
+
+func _skip_dialog() -> void:
+	if state == State.CUTSCENE or state == State.ARRIVAL:
+		_finish_script()
 
 
 func _end_cutscene() -> void:
@@ -569,7 +631,7 @@ func _on_room_entered(body: Node3D, idx: int) -> void:
 		return
 	var r = rooms[idx]
 	if r.number == target_number:
-		_start_quiz()
+		_start_arrival(r)
 		return
 	time_left -= D.WRONG_ROOM_PENALTY
 	wrong_rooms += 1
@@ -579,6 +641,24 @@ func _on_room_entered(body: Node3D, idx: int) -> void:
 	_sfx("buzzer")
 	var out: Vector3 = r.wing.to_global(B(r.x0 + 1.7, r.wall_y - r.into * 1.5, UP + 1))
 	player.knockback(out - player.global_position, 13.0, 4.0)
+
+
+func _start_arrival(r: Dictionary) -> void:
+	state = State.ARRIVAL
+	player.frozen = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_sfx("ding")
+	cut_prof.global_position = r.wing.to_global(B(r.x0 + 4, r.wall_y + r.into * 6.9, UP))
+	var to_player := player.global_position - cut_prof.global_position
+	cut_prof.rotation = Vector3(0, atan2(-to_player.x, -to_player.z), 0)
+	player.rotation.y = atan2(to_player.x, to_player.z)
+	player.cam.rotation.x = -0.05
+	script_lines = D.ARRIVAL
+	script_done = _start_quiz
+	cut_line = -1
+	dialog_panel.visible = true
+	skip_button.visible = true
+	_next_line()
 
 
 func _on_bonk() -> void:
@@ -609,7 +689,7 @@ func _on_answer(i: int) -> void:
 	if state != State.QUIZ:
 		return
 	if i == int(current_q.correct):
-		_end(true, "You made it in %.1f seconds AND you know what happened last class.\nThe professor is visibly disappointed." % run_time)
+		_end(true, "You made it in %.1f seconds AND you know what was taught today.\nThe professor is visibly disappointed." % run_time)
 	else:
 		_end(false, D.WRONG_ANSWER_LINES[rng.randi_range(0, D.WRONG_ANSWER_LINES.size() - 1)]
 			+ "\nCorrect answer: " + str(current_q.a[int(current_q.correct)]))
@@ -649,7 +729,7 @@ func _process(delta: float) -> void:
 		n.bubble.visible = n.node.global_position.distance_to(player.global_position) < 6.0 and state == State.RUN
 
 	match state:
-		State.CUTSCENE:
+		State.CUTSCENE, State.ARRIVAL:
 			if cut_line >= 0 and dialog_text.visible_characters != -1:
 				var before := int(cut_chars)
 				cut_chars += delta * 45.0
@@ -691,7 +771,7 @@ func _input(e: InputEvent) -> void:
 		and e.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER]) \
 		or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT)
 	match state:
-		State.CUTSCENE:
+		State.CUTSCENE, State.ARRIVAL:
 			if pressed_advance:
 				_advance_dialog()
 				get_viewport().set_input_as_handled()
@@ -831,7 +911,7 @@ func _build_ui() -> void:
 	skip_button = _btn("SKIP  >>", 20, Color(1, 1, 1, 0.85))
 	skip_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	skip_button.position = Vector2(-200, 24)
-	skip_button.pressed.connect(_end_cutscene)
+	skip_button.pressed.connect(_skip_dialog)
 	skip_button.visible = false
 	root.add_child(skip_button)
 
@@ -846,7 +926,7 @@ func _build_ui() -> void:
 	qv.add_theme_constant_override("separation", 14)
 	qp.add_child(qv)
 	qv.add_child(_lbl("ATTENDANCE VERIFICATION  -  STEP 2 OF 2", 22, Color(1, 0.85, 0.3)))
-	qv.add_child(_lbl("Prove you were here last class.", 18, Color(0.8, 0.85, 1)))
+	qv.add_child(_lbl("Prove you know what was taught TODAY.", 18, Color(0.8, 0.85, 1)))
 	quiz_q = _lbl("", 36, Color.WHITE, font_serif)
 	quiz_q.autowrap_mode = TextServer.AUTOWRAP_WORD
 	quiz_q.custom_minimum_size = Vector2(920, 0)
@@ -1201,7 +1281,17 @@ func _debug_shots() -> void:
 		Input.parse_input_event(ev)
 		await get_tree().create_timer(0.3).timeout
 	print("TEST cutscene line after 6 presses: ", cut_line)
-	_begin_run()
+	for i in 20:
+		var ev2 := InputEventKey.new()
+		ev2.keycode = KEY_SPACE
+		ev2.pressed = true
+		Input.parse_input_event(ev2)
+		await get_tree().create_timer(0.15).timeout
+	await get_tree().create_timer(0.6).timeout
+	await _snap("02b_portal")
+	await get_tree().create_timer(2.5).timeout
+	print("TEST after portal: state=", State.keys()[state], " (expect COUNTDOWN/RUN)")
+	await get_tree().create_timer(2.5).timeout
 	await get_tree().create_timer(3.0).timeout
 	await _snap("03_plaza")
 	var yaw_before := player.rotation.y
@@ -1240,6 +1330,20 @@ func _debug_shots() -> void:
 	await get_tree().create_timer(0.5).timeout
 	print("TEST wrong_rooms=", wrong_rooms, " penalty=", t_before - time_left)
 	await _snap("06b_wrong_room")
+	for i in rooms.size():
+		if rooms[i].number == target_number:
+			var tr = rooms[i]
+			player.reset_to(tr.wing.to_global(B(tr.x0 + 4, tr.wall_y + tr.into * 3, UP + 0.1)), 0)
+	await get_tree().create_timer(1.2).timeout
+	print("TEST arrival: state=", State.keys()[state], " line=", cut_line)
+	await _snap("06f_arrival")
+	for i in 14:
+		var ev3 := InputEventKey.new()
+		ev3.keycode = KEY_SPACE
+		ev3.pressed = true
+		Input.parse_input_event(ev3)
+		await get_tree().create_timer(0.15).timeout
+	print("TEST after arrival: state=", State.keys()[state], " (expect QUIZ)")
 	_start_quiz()
 	await get_tree().create_timer(0.3).timeout
 	await _snap("07_quiz")

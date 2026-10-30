@@ -64,18 +64,28 @@ const SUBJECTS := {
 	],
 }
 
-# [speaker, line]. Speakers: "STUDENT" or "PROF".
+# [speaker, line]. Speakers: "STUDENT" or "PROF". {name} and {subject} get filled in.
+# Opening cutscene: ends with the professor opening a portal back to the main entrance.
 const CUTSCENE := [
 	["STUDENT", "SIR! Sorry I'm late! Can you please mark my attendance?"],
-	["PROF", "Attendance? Hmm."],
-	["PROF", "When I was young, we did roll call. It took too long."],
-	["PROF", "Then we signed a sheet. Too long. Then QR codes. Then FACIAL RECOGNITION."],
-	["PROF", "Now the camera marks you present before you even wake up. It is far too EASY."],
-	["STUDENT", "...so can you mark me present?"],
-	["PROF", "No. Go back to the main entrance."],
-	["PROF", "You have 60 seconds to reach this classroom. Then you tell me what happened last class."],
-	["STUDENT", "But sir, every classroom looks EXACTLY the same!"],
-	["PROF", "Yes. Good luck."],
+	["PROF", "LATE?! Twenty minutes late and you stroll in here asking me for ATTENDANCE?"],
+	["PROF", "What the hell is wrong with you, {name}? Does this look like a damn hotel to you?"],
+	["STUDENT", "Sir, the lift wasn't working, and then the traffic, and my alarm-"],
+	["PROF", "I don't give a DAMN about your alarm! Twenty-three years of teaching and nobody, NOBODY, has had the audacity-"],
+	["PROF", "You know what? No. You want attendance? EARN it, you absolute clown."],
+	["STUDENT", "...earn it how, sir?"],
+	["PROF", "Main entrance. Sixty seconds to get back to my class. Then one question on today's {subject}."],
+	["STUDENT", "But sir, every classroom looks exactly the same-"],
+	["PROF", "Not my damn problem. GET. OUT."],
+]
+
+# Short scene when you reach the right classroom, right before the quiz.
+const ARRIVAL := [
+	["PROF", "Ah, shit. You actually made it."],
+	["PROF", "Don't look so proud. You're sweating all over my classroom. Disgusting."],
+	["STUDENT", "So... attendance, sir?"],
+	["PROF", "One question. On what I taught TODAY in {subject}. While you were busy being late."],
+	["PROF", "Get it right and you're present. Get it wrong and I mark you absent with my own damn hands."],
 ]
 
 const GUIDE_LINES := [
