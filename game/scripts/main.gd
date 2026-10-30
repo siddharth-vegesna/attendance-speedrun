@@ -16,7 +16,7 @@ const DOOR_A := 1.0
 const CUTSCENE_ROOM := 0
 const SPAWN := Vector3(0, 0.2, 28)
 
-enum State { TITLE, CUTSCENE, COUNTDOWN, RUN, QUIZ, RESULT }
+enum State { TITLE, SIGNIN, CUTSCENE, COUNTDOWN, RUN, QUIZ, RESULT }
 var state := State.TITLE
 
 var player: CharacterBody3D
@@ -34,12 +34,25 @@ var quiz_time := 0.0
 var last_tick := 0
 var rng := RandomNumberGenerator.new()
 
+# who is running + what for (written to the attendance register)
+var student_name := ""
+var student_id := ""
+var subject := ""
+const REGISTER_PATH := "res://../attendance_register.csv"
+
 var font_bold: SystemFont
 var font_serif: SystemFont
 var sounds := {}
 
 # UI
 var title_panel: Control
+var signin_panel: Control
+var name_edit: LineEdit
+var id_edit: LineEdit
+var subject_buttons := {}
+var signin_error: Label
+var register_panel: Control
+var register_text: RichTextLabel
 var hud: Control
 var timer_label: Label
 var target_label: Label
@@ -385,6 +398,7 @@ func _build_cutscene() -> void:
 func _start_cutscene() -> void:
 	state = State.CUTSCENE
 	title_panel.visible = false
+	signin_panel.visible = false
 	hud.visible = false
 	cut_cam.look_at_from_position(B(21.2, 30.0, UP + 2.2), B(16.8, 35.0, UP + 1.3))
 	cut_cam.current = true
@@ -416,7 +430,7 @@ func _next_line() -> void:
 		return
 	var line: Array = D.CUTSCENE[cut_line]
 	var speaker: String = line[0]
-	dialog_name.text = "YOU (LATE)" if speaker == "STUDENT" else "THE PROFESSOR"
+	dialog_name.text = ("%s (LATE)" % student_name.to_upper()) if speaker == "STUDENT" else "THE PROFESSOR"
 	dialog_name.modulate = Color(0.5, 0.75, 1) if speaker == "STUDENT" else Color(1, 0.85, 0.3)
 	dialog_text.text = line[1]
 	dialog_text.visible_characters = 0
@@ -454,6 +468,8 @@ func _end_cutscene() -> void:
 func _begin_run() -> void:
 	state = State.COUNTDOWN
 	title_panel.visible = false
+	signin_panel.visible = false
+	register_panel.visible = false
 	result_panel.visible = false
 	quiz_panel.visible = false
 	dialog_panel.visible = false
@@ -478,7 +494,7 @@ func _begin_run() -> void:
 	player.frozen = true
 	player.cam.current = true
 	hud.visible = true
-	target_label.text = "YOUR CLASS:  %s" % target_number
+	target_label.text = "%s:  %s" % [subject.to_upper(), target_number]
 	timer_label.text = "%.1f" % time_left
 	timer_label.modulate = Color.WHITE
 	_fade_in()
@@ -531,7 +547,8 @@ func _start_quiz() -> void:
 	player.frozen = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_sfx("ding")
-	current_q = D.QUESTIONS[rng.randi_range(0, D.QUESTIONS.size() - 1)]
+	var pool: Array = D.SUBJECTS[subject]
+	current_q = pool[rng.randi_range(0, pool.size() - 1)]
 	quiz_q.text = current_q.q
 	for i in 4:
 		quiz_buttons[i].text = "%s)   %s" % ["ABCD"[i], current_q.a[i]]
@@ -559,9 +576,11 @@ func _end(present: bool, reason: String) -> void:
 	result_panel.visible = true
 	result_stamp.text = "PRESENT" if present else "ABSENT"
 	result_stamp.modulate = Color(0.3, 0.95, 0.45) if present else Color(1, 0.25, 0.25)
-	var att := "Attendance: 75.01%  (survived... for now)" if present else "Attendance: 74.99%  (DEBARRED FROM EXAMS)"
-	result_text.text = "%s\n\nTime: %.1fs   |   Wrong rooms: %d   |   Doors to the face: %d\n%s" % [
-		reason, run_time, wrong_rooms, bonks, att]
+	var att := ("Attendance: %.2f%%  (survived... for now)" % (D.MIN_ATTENDANCE + 0.01)) if present \
+		else ("Attendance: %.2f%%  (DEBARRED. Minimum is %d%%.)" % [D.MIN_ATTENDANCE - 0.01, int(D.MIN_ATTENDANCE)])
+	result_text.text = "%s  -  %s  -  %s\n%s\n\nTime: %.1fs   |   Wrong rooms: %d   |   Doors to the face: %d\n%s\n\nWritten to the attendance register." % [
+		student_name, student_id, subject, reason, run_time, wrong_rooms, bonks, att]
+	_log_attendance(present)
 	result_stamp.pivot_offset = result_stamp.size / 2
 	result_stamp.scale = Vector2(3, 3)
 	result_stamp.rotation = -0.2
@@ -821,46 +840,127 @@ func _build_ui() -> void:
 	again.pressed.connect(_begin_run)
 	var to_title := _btn("BACK TO TITLE", 28, Color(0.85, 0.88, 0.95))
 	to_title.pressed.connect(_show_title)
+	var reg_btn := _btn("REGISTER", 28, Color(0.85, 0.88, 0.95))
+	reg_btn.pressed.connect(_show_register)
 	rh.add_child(again)
+	rh.add_child(reg_btn)
 	rh.add_child(to_title)
 	rv.add_child(rh)
 	result_panel.visible = false
 	root.add_child(result_panel)
 
-	# --- title
+	# --- title (minimal: name, one line, one button)
 	title_panel = ColorRect.new()
-	title_panel.color = Color(0.05, 0.07, 0.17, 0.93)
+	title_panel.color = Color(0.03, 0.04, 0.09, 0.82)
 	title_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var tc := CenterContainer.new()
 	tc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	title_panel.add_child(tc)
 	var tvb := VBoxContainer.new()
-	tvb.add_theme_constant_override("separation", 16)
+	tvb.add_theme_constant_override("separation", 18)
 	tc.add_child(tvb)
-	tvb.add_child(_lbl("BITS PILANI, DUBAI CAMPUS", 22, Color(1, 0.8, 0.35)))
-	tvb.add_child(_lbl("SMART ATTENDANCE SYSTEM v7.0", 64, Color.WHITE))
-	var hist := RichTextLabel.new()
-	hist.bbcode_enabled = true
-	hist.fit_content = true
-	hist.scroll_active = false
-	hist.custom_minimum_size = Vector2(900, 0)
-	hist.add_theme_font_override("normal_font", font_serif)
-	hist.add_theme_font_size_override("normal_font_size", 28)
-	hist.text = "[center][s]Roll call[/s]  -  too slow\n[s]Signing a sheet[/s]  -  too slow\n[s]Scanning a QR code[/s]  -  too slow\n[s]Facial recognition[/s]  -  [color=#ff6060]TOO EASY[/color]\n\n[color=#ffd84a]NEW: Speedrun-Based Attendance Verification[/color][/center]"
-	tvb.add_child(hist)
-	tvb.add_child(_lbl("Reach your classroom in 60 seconds. Then answer one question about last class.\nFail either and you are ABSENT.", 20, Color(0.82, 0.86, 1)))
-	var bh := HBoxContainer.new()
-	bh.alignment = BoxContainer.ALIGNMENT_CENTER
-	bh.add_theme_constant_override("separation", 20)
-	var start := _btn("MARK MY ATTENDANCE", 34, Color(1, 0.84, 0.25))
-	start.pressed.connect(_start_cutscene)
-	var skip := _btn("skip story", 22, Color(0.3, 0.33, 0.5), Color.WHITE)
-	skip.pressed.connect(_begin_run)
-	bh.add_child(start)
-	bh.add_child(skip)
-	tvb.add_child(bh)
-	tvb.add_child(_lbl("Facial recognition has been deprecated for being too convenient.", 15, Color(1, 1, 1, 0.45)))
+	tvb.add_child(_lbl("BITS PILANI  ·  DUBAI CAMPUS", 20, Color(1, 0.8, 0.35)))
+	var big_t := _lbl("ATTENDANCE\nSPEEDRUN", 110, Color.WHITE)
+	big_t.add_theme_constant_override("line_spacing", -30)
+	tvb.add_child(big_t)
+	tvb.add_child(_lbl("Facial recognition was too easy.", 26, Color(1, 1, 1, 0.6), font_serif))
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 20)
+	tvb.add_child(spacer)
+	var play_c := CenterContainer.new()
+	var play := _btn("PLAY", 40, Color(1, 0.84, 0.25))
+	play.custom_minimum_size = Vector2(320, 0)
+	play.pressed.connect(_show_signin)
+	play_c.add_child(play)
+	tvb.add_child(play_c)
+	var reg_c := CenterContainer.new()
+	var reg_t := _btn("view attendance register", 18, Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.7))
+	reg_t.pressed.connect(_show_register)
+	reg_c.add_child(reg_t)
+	tvb.add_child(reg_c)
 	root.add_child(title_panel)
+
+	# --- sign in: name, ID, subject
+	signin_panel = ColorRect.new()
+	signin_panel.color = Color(0.03, 0.04, 0.09, 0.88)
+	signin_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var sc := CenterContainer.new()
+	sc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	signin_panel.add_child(sc)
+	var sp := PanelContainer.new()
+	sp.add_theme_stylebox_override("panel", _panel_style(Color(0.07, 0.09, 0.2, 0.97)))
+	sc.add_child(sp)
+	var sv := VBoxContainer.new()
+	sv.add_theme_constant_override("separation", 14)
+	sp.add_child(sv)
+	sv.add_child(_lbl("LATE ENTRY FORM", 40, Color.WHITE))
+	sv.add_child(_lbl("Fill this in. Then earn it.", 20, Color(1, 1, 1, 0.55), font_serif))
+	name_edit = _edit("Your name")
+	sv.add_child(name_edit)
+	id_edit = _edit("ID number  (e.g. 2024A7PS0123U)")
+	sv.add_child(id_edit)
+	sv.add_child(_lbl("Which class are you late for?", 22, Color(1, 0.85, 0.3)))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	for sub in D.SUBJECTS.keys():
+		var b := _btn(sub, 18, Color(0.85, 0.88, 0.95))
+		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(210, 0)
+		var on := StyleBoxFlat.new()
+		on.bg_color = Color(1, 0.84, 0.25)
+		on.set_corner_radius_all(10)
+		on.content_margin_top = 14
+		on.content_margin_bottom = 14
+		b.add_theme_stylebox_override("pressed", on)
+		b.pressed.connect(_pick_subject.bind(sub))
+		grid.add_child(b)
+		subject_buttons[sub] = b
+	sv.add_child(grid)
+	signin_error = _lbl("", 18, Color(1, 0.45, 0.45))
+	sv.add_child(signin_error)
+	var sh := HBoxContainer.new()
+	sh.alignment = BoxContainer.ALIGNMENT_CENTER
+	sh.add_theme_constant_override("separation", 16)
+	var go_btn := _btn("MARK MY ATTENDANCE", 30, Color(1, 0.84, 0.25))
+	go_btn.pressed.connect(_submit_signin.bind(true))
+	var skip := _btn("skip story", 20, Color(0.3, 0.33, 0.5), Color.WHITE)
+	skip.pressed.connect(_submit_signin.bind(false))
+	var back := _btn("back", 20, Color(0.3, 0.33, 0.5), Color.WHITE)
+	back.pressed.connect(_show_title)
+	sh.add_child(back)
+	sh.add_child(skip)
+	sh.add_child(go_btn)
+	sv.add_child(sh)
+	signin_panel.visible = false
+	root.add_child(signin_panel)
+
+	# --- attendance register (what the professor actually gets)
+	register_panel = ColorRect.new()
+	register_panel.color = Color(0.03, 0.04, 0.09, 0.95)
+	register_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var rgc := CenterContainer.new()
+	rgc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	register_panel.add_child(rgc)
+	var rgv := VBoxContainer.new()
+	rgv.add_theme_constant_override("separation", 16)
+	rgc.add_child(rgv)
+	rgv.add_child(_lbl("ATTENDANCE REGISTER", 44, Color.WHITE))
+	register_text = RichTextLabel.new()
+	register_text.bbcode_enabled = true
+	register_text.custom_minimum_size = Vector2(1200, 520)
+	register_text.add_theme_font_size_override("normal_font_size", 22)
+	register_text.add_theme_font_size_override("bold_font_size", 22)
+	rgv.add_child(register_text)
+	rgv.add_child(_lbl("Saved to attendance_register.csv in the project folder.", 16, Color(1, 1, 1, 0.5)))
+	var close_c := CenterContainer.new()
+	var close := _btn("CLOSE", 24, Color(0.85, 0.88, 0.95))
+	close.pressed.connect(func(): register_panel.visible = false)
+	close_c.add_child(close)
+	rgv.add_child(close_c)
+	register_panel.visible = false
+	root.add_child(register_panel)
 
 	fade = ColorRect.new()
 	fade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -878,9 +978,97 @@ func _lbl_at(text: String, size: int, preset: int, pos: Vector2, sz: Vector2, co
 	return l
 
 
+func _edit(placeholder: String) -> LineEdit:
+	var e := LineEdit.new()
+	e.placeholder_text = placeholder
+	e.custom_minimum_size = Vector2(0, 58)
+	e.add_theme_font_size_override("font_size", 26)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1, 1, 1, 0.08)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 18
+	e.add_theme_stylebox_override("normal", sb)
+	e.add_theme_stylebox_override("focus", sb)
+	return e
+
+
+func _show_signin() -> void:
+	state = State.SIGNIN
+	title_panel.visible = false
+	signin_panel.visible = true
+	signin_error.text = ""
+	name_edit.grab_focus()
+
+
+func _pick_subject(sub: String) -> void:
+	subject = sub
+	for k in subject_buttons:
+		subject_buttons[k].button_pressed = k == sub
+
+
+func _submit_signin(with_story: bool) -> void:
+	student_name = name_edit.text.strip_edges()
+	student_id = id_edit.text.strip_edges().to_upper()
+	if student_name == "" or student_id == "":
+		signin_error.text = "Name and ID please. The register needs to know who to blame."
+		return
+	if subject == "":
+		signin_error.text = "Pick the class you're late for."
+		return
+	if with_story:
+		_start_cutscene()
+	else:
+		_begin_run()
+
+
+func _log_attendance(present: bool) -> void:
+	var path := ProjectSettings.globalize_path(REGISTER_PATH)
+	var is_new := not FileAccess.file_exists(path)
+	var f := FileAccess.open(path, FileAccess.READ_WRITE if not is_new else FileAccess.WRITE)
+	if f == null:
+		return
+	if is_new:
+		f.store_line("time,name,id,subject,status,seconds,wrong_rooms,doors_to_face")
+	f.seek_end()
+	var clean := func(t: String) -> String: return t.replace(",", " ")
+	f.store_line("%s,%s,%s,%s,%s,%.1f,%d,%d" % [Time.get_datetime_string_from_system(false, true),
+		clean.call(student_name), clean.call(student_id), subject, "PRESENT" if present else "ABSENT",
+		run_time, wrong_rooms, bonks])
+	f.close()
+
+
+func _show_register() -> void:
+	var rows := []
+	var path := ProjectSettings.globalize_path(REGISTER_PATH)
+	if FileAccess.file_exists(path):
+		var lines := FileAccess.get_file_as_string(path).strip_edges().split("\n")
+		for i in range(1, lines.size()):
+			rows.append(lines[i].split(","))
+	var present := 0
+	var t := "[table=6]"
+	for h in ["TIME", "NAME", "ID", "CLASS", "STATUS", "SECONDS"]:
+		t += "[cell][b][color=#ffd84a]%s[/color][/b]   [/cell]" % h
+	rows.reverse()
+	for r in rows:
+		if r.size() < 6:
+			continue
+		var ok: bool = r[4] == "PRESENT"
+		present += int(ok)
+		t += "[cell]%s   [/cell][cell]%s   [/cell][cell]%s   [/cell][cell]%s   [/cell][cell][color=%s]%s[/color]   [/cell][cell]%s[/cell]" % [
+			r[0].substr(11, 5), r[1], r[2], r[3], "#5ef08a" if ok else "#ff5a5a", r[4], r[5]]
+	t += "[/table]"
+	if rows.is_empty():
+		t = "[center]Nobody yet. Suspicious.[/center]"
+	else:
+		t = "[center]%d present  ·  %d absent[/center]\n\n" % [present, rows.size() - present] + t
+	register_text.text = t
+	register_panel.visible = true
+
+
 func _show_title() -> void:
 	state = State.TITLE
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	signin_panel.visible = false
 	result_panel.visible = false
 	quiz_panel.visible = false
 	hud.visible = false
@@ -950,7 +1138,13 @@ func _snap(name: String) -> void:
 func _debug_shots() -> void:
 	await get_tree().create_timer(1.0).timeout
 	await _snap("01_title")
-	_start_cutscene()
+	_show_signin()
+	name_edit.text = "Test Student"
+	id_edit.text = "2024A7PS0001U"
+	_pick_subject("Digital Design")
+	await get_tree().create_timer(0.3).timeout
+	await _snap("01b_signin")
+	_submit_signin(true)
 	await get_tree().create_timer(3.0).timeout
 	await _snap("02_cutscene")
 	for i in 6:
@@ -996,4 +1190,7 @@ func _debug_shots() -> void:
 	_on_answer(int(current_q.correct))
 	await get_tree().create_timer(0.6).timeout
 	await _snap("08_result")
+	_show_register()
+	await get_tree().create_timer(0.3).timeout
+	await _snap("09_register")
 	get_tree().quit()
